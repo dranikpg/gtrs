@@ -24,6 +24,8 @@ func (s Stream[T]) Add(ctx context.Context, v T, idarg ...string) (string, error
 		id = idarg[0]
 	}
 
+	this wond build
+
 	id, err := s.client.XAdd(ctx, &redis.XAddArgs{
 		Stream: s.stream,
 		Values: structToMap(v),
