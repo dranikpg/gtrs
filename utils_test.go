@@ -12,6 +12,11 @@ type Person struct {
 	Height float32
 }
 
+type City struct {
+	Name string
+	Size int
+}
+
 func TestUtils_convertStructToMap(t *testing.T) {
 	p1 := Person{Name: "Vlad", Age: 19, Height: 172.0}
 	m1 := structToMap(p1)

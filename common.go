@@ -25,7 +25,6 @@ func (ce ClientError) Error() string {
 
 // ParsingError indicates an error during parsing
 type ParsingError struct {
-	ID    string
 	Data  map[string]interface{}
 	Inner error
 }
@@ -35,5 +34,5 @@ func (pe ParsingError) Unwrap() error {
 }
 
 func (pe ParsingError) Error() string {
-	return fmt.Sprintf("parsing error: id %v, cause: %v", pe.ID, pe.Inner)
+	return fmt.Sprintf("parsing error: cause: %v", pe.Inner)
 }

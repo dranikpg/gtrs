@@ -8,8 +8,11 @@ import (
 	"github.com/go-redis/redis/v8"
 )
 
-type Convertible interface {
+type ConvertibleTo interface {
 	ToMap() map[string]any
+}
+
+type ConvertibleFrom interface {
 	FromMap(map[string]any) error
 }
 
@@ -20,7 +23,6 @@ func toMessage[T any](rm redis.XMessage, stream string) Message[T] {
 
 	if err = mapToStruct(&data, rm.Values); err != nil {
 		err = ParsingError{
-			ID:    rm.ID,
 			Data:  rm.Values,
 			Inner: err,
 		}
@@ -34,8 +36,9 @@ func toMessage[T any](rm redis.XMessage, stream string) Message[T] {
 	}
 }
 
+// structToMap convert a struct to a map.
 func structToMap(st any) map[string]any {
-	if c, ok := st.(Convertible); ok {
+	if c, ok := st.(ConvertibleTo); ok {
 		return c.ToMap()
 	}
 
@@ -51,12 +54,13 @@ func structToMap(st any) map[string]any {
 	return out
 }
 
+// mapToStruct tries to convert a map to a struct.
 func mapToStruct(st any, data map[string]any) error {
 	rv := reflect.ValueOf(st).Elem()
-	rt := reflect.TypeOf(st).Elem()
+	rt := reflect.TypeOf(st)
 
-	if rt.Implements(typeOf[Convertible]()) {
-		if c, ok := st.(Convertible); ok {
+	if rt.Implements(typeOf[ConvertibleFrom]()) {
+		if c, ok := st.(ConvertibleFrom); ok {
 			return c.FromMap(data)
 		}
 	}
