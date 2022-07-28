@@ -12,7 +12,7 @@ type Person struct {
 	Height float32
 }
 
-func TestConvert_StructToMap(t *testing.T) {
+func TestUtils_convertStructToMap(t *testing.T) {
 	p1 := Person{Name: "Vlad", Age: 19, Height: 172.0}
 	m1 := structToMap(p1)
 
@@ -23,7 +23,7 @@ func TestConvert_StructToMap(t *testing.T) {
 	}, m1)
 }
 
-func TestConvert_MapToStruct(t *testing.T) {
+func TestUtils_convertMapToStruct(t *testing.T) {
 	m1 := map[string]any{
 		"Name":   "Vlad",
 		"Age":    "19",

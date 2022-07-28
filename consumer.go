@@ -90,7 +90,6 @@ func (sc *SimpleConsumer[T]) fetchLoop() {
 	stBuf := make([]string, 2*len(fetchedIds))
 
 	for {
-
 		res, err := sc.read(fetchedIds, stBuf)
 
 		if err != nil {
@@ -121,7 +120,7 @@ func (sc *SimpleConsumer[T]) consumeLoop() {
 	for {
 		var msg fetchMessage
 
-		// listen for fetch message, error or context cancellation
+		// Listen for fetch message, error or context cancellation.
 		select {
 		case <-sc.ctx.Done():
 			return
@@ -131,11 +130,11 @@ func (sc *SimpleConsumer[T]) consumeLoop() {
 		case msg = <-sc.fetchChan:
 		}
 
-		// send message
+		// Send message.
 		select {
 		case <-sc.ctx.Done():
 			return
-		case sc.consumeChan <- toMessage[T](msg.message):
+		case sc.consumeChan <- toMessage[T](msg.message, msg.stream):
 			sc.seenIds[msg.stream] = msg.message.ID
 		}
 	}

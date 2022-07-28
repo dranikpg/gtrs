@@ -2,11 +2,12 @@ package main
 
 import "fmt"
 
-// A generic message with an ID, data and an optional error.
+// A generic message with an ID, stream, data and an optional error.
 type Message[T any] struct {
-	ID    string
-	Error error
-	Data  T
+	ID     string
+	Stream string
+	Error  error
+	Data   T
 }
 
 // ClientError indicates an erorr with the redis client
