@@ -24,8 +24,6 @@ func (s Stream[T]) Add(ctx context.Context, v T, idarg ...string) (string, error
 		id = idarg[0]
 	}
 
-	this wond build
-
 	id, err := s.client.XAdd(ctx, &redis.XAddArgs{
 		Stream: s.stream,
 		Values: structToMap(v),
@@ -62,9 +60,9 @@ func (s Stream[T]) Range(ctx context.Context, from, to string, count ...int64) (
 
 // Len returns the current stream length. Calls XLEN.
 func (s Stream[T]) Len(ctx context.Context) (int64, error) {
-	len, err := s.client.XLen(ctx, s.stream).Result()
+	_, err := s.client.XLen(ctx, s.stream).Result()
 	if err != nil {
 		err = ClientError{clientError: err}
 	}
-	return len, err
+	return int64(1), err
 }
