@@ -11,7 +11,15 @@ import (
 
 // startMiniredis starts a new miniredis instance and returns it with a fresh client.
 func startMiniredis(t *testing.T) (*miniredis.Miniredis, redis.Cmdable) {
-	s := miniredis.RunT(t)
+	var s *miniredis.Miniredis
+	if t != nil {
+		s = miniredis.RunT(t)
+	} else {
+		var err error
+		if s, err = miniredis.Run(); err != nil {
+			panic(err)
+		}
+	}
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     s.Addr(),
 		Password: "", // no password set

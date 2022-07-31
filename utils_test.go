@@ -18,12 +18,19 @@ type City struct {
 	Size int
 }
 
+type Empty struct {
+}
+
+func (e *Empty) FromMap(map[string]any) error {
+	return nil
+}
+
 type NonParsable struct {
 }
 
 var errNotParsable = errors.New("not parsable")
 
-func (nc *NonParsable) FromMap(map[string]interface{}) error {
+func (nc *NonParsable) FromMap(map[string]any) error {
 	return errNotParsable
 }
 

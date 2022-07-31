@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -85,4 +86,51 @@ func TestConsumer_ParserError(t *testing.T) {
 	assert.False(t, msg.IsLast())
 	assert.IsType(t, ParsingError{}, msg.Err)
 	assert.Equal(t, errNotParsable, errors.Unwrap(msg.Err))
+}
+
+type benchmarkClientMock struct {
+	*redis.Client
+	msgs []redis.XMessage
+}
+
+func (bmc benchmarkClientMock) XRead(ctx context.Context, a *redis.XReadArgs) *redis.XStreamSliceCmd {
+	return redis.NewXStreamSliceCmdResult([]redis.XStream{
+		{Stream: "s1", Messages: bmc.msgs},
+	}, nil)
+}
+
+// BenchmarkConsumer measures the throughput of the whole pipeline.
+//
+// An unbuffered channel read takes about 100-150 ns, a buffered channel read takes up to 100ns.
+// A goroutine wakeup takes less than 100ns.
+// So the theoretical target should be about 1000 ns (1 ms), giving throughput of 1 M/s entries.
+// However currently results are in range 1200-1800 ns
+func BenchmarkConsumer(b *testing.B) {
+	msgbuf := make([]redis.XMessage, 5000)
+	for i := 0; i < len(msgbuf); i++ {
+		msgbuf[i] = redis.XMessage{
+			ID:     fmt.Sprint(i),
+			Values: map[string]any{"A": "B"},
+		}
+	}
+
+	for _, size := range []uint{0, 10, 100, 1000, 10000} {
+		b.Run(fmt.Sprintf("s-%v", size), func(b *testing.B) {
+			mock := benchmarkClientMock{msgs: msgbuf}
+			cs := NewConsumer[Empty](context.TODO(), mock, StreamIds{"s1": "0-0"}, SimpleConsumerConfig{
+				Block:      0,
+				Count:      int64(len(msgbuf)),
+				BufferSize: size,
+			})
+
+			b.StartTimer()
+			var read int
+			for range cs.Chan() {
+				if read += 1; read == b.N {
+					break
+				}
+			}
+			b.StopTimer()
+		})
+	}
 }
