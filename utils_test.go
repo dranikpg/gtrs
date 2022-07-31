@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -15,6 +16,15 @@ type Person struct {
 type City struct {
 	Name string
 	Size int
+}
+
+type NonParsable struct {
+}
+
+var errNotParsable = errors.New("not parsable")
+
+func (nc *NonParsable) FromMap(map[string]interface{}) error {
+	return errNotParsable
 }
 
 func TestUtils_convertStructToMap(t *testing.T) {

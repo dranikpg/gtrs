@@ -1,13 +1,21 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // A generic message with an ID, stream, data and an optional error.
 type Message[T any] struct {
 	ID     string
 	Stream string
-	Error  error
+	Err    error
 	Data   T
+}
+
+// IsLast returns true if the consumer closed after this message
+func (msg Message[T]) IsLast() bool {
+	_, ok := msg.Err.(ClientError)
+	return ok
 }
 
 // ClientError indicates an erorr with the redis client

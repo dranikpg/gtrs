@@ -31,7 +31,7 @@ func toMessage[T any](rm redis.XMessage, stream string) Message[T] {
 	return Message[T]{
 		ID:     rm.ID,
 		Stream: stream,
-		Error:  err,
+		Err:    err,
 		Data:   data,
 	}
 }

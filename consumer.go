@@ -125,7 +125,7 @@ func (sc *SimpleConsumer[T]) consumeLoop() {
 		case <-sc.ctx.Done():
 			return
 		case err := <-sc.errorChan:
-			sc.consumeChan <- Message[T]{Error: ClientError{clientError: err}}
+			sc.consumeChan <- Message[T]{Err: ClientError{clientError: err}}
 			return
 		case msg = <-sc.fetchChan:
 		}
