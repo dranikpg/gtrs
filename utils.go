@@ -23,8 +23,8 @@ func toMessage[T any](rm redis.XMessage, stream string) Message[T] {
 
 	if err = mapToStruct(&data, rm.Values); err != nil {
 		err = ParsingError{
-			Data:  rm.Values,
-			Inner: err,
+			Data: rm.Values,
+			Err:  err,
 		}
 	}
 

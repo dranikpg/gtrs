@@ -88,6 +88,20 @@ func TestConsumer_ParserError(t *testing.T) {
 	assert.Equal(t, errNotParsable, errors.Unwrap(msg.Err))
 }
 
+func TestConsumer_Close(t *testing.T) {
+	_, rdb := startMiniredis(t)
+	cs := NewConsumer[NonParsable](context.TODO(), rdb, StreamIds{"s1": "0-0"}, SimpleConsumerConfig{
+		Block:      0,
+		Count:      0,
+		BufferSize: 0,
+	})
+
+	cs.Close()
+
+	_, ok := <-cs.Chan()
+	assert.False(t, ok)
+}
+
 type benchmarkClientMock struct {
 	*redis.Client
 	msgs []redis.XMessage

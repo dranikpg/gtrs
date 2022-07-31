@@ -18,11 +18,21 @@ func main() {
 		DB:       0,  // use default DB
 	})
 
-	ctx, cancel := context.WithCancel(context.TODO())
-	cs := NewConsumer[TestMessage](ctx, rdb, StreamIds{"s1": "0"})
-	defer cancel()
+	cs := NewConsumer[TestMessage](context.TODO(), rdb, StreamIds{"s1": "0"})
+	defer cs.Close()
 
-	for msg := range cs.Chan() {
+	var msg Message[TestMessage]
+	for msg = range cs.Chan() {
+		if msg.Err != nil {
+			switch t := msg.Err.(type) {
+			case ClientError:
+				panic(t)
+			case ParsingError:
+				fmt.Println("failed to parse", t.Data, "reason", t.Err)
+			}
+		}
+	}
+	if msg.Err != nil {
 		fmt.Println(msg)
 	}
 }

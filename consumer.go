@@ -33,6 +33,8 @@ type SimpleConsumer[T any] struct {
 	fetchChan   chan fetchMessage
 	consumeChan chan Message[T]
 	seenIds     StreamIds
+
+	closeFunc func()
 }
 
 // NewConsumer creates a new SimpleConsumer with optional configuration.
@@ -47,6 +49,8 @@ func NewConsumer[T any](ctx context.Context, rdb redis.Cmdable, ids StreamIds, c
 		cfg = cfgs[0]
 	}
 
+	ctx, closeFunc := context.WithCancel(ctx)
+
 	sc := &SimpleConsumer[T]{
 		ctx:         ctx,
 		rdb:         rdb,
@@ -55,6 +59,7 @@ func NewConsumer[T any](ctx context.Context, rdb redis.Cmdable, ids StreamIds, c
 		fetchChan:   make(chan fetchMessage),
 		consumeChan: make(chan Message[T]),
 		seenIds:     ids,
+		closeFunc:   closeFunc,
 	}
 
 	go sc.fetchLoop()
@@ -86,6 +91,9 @@ type fetchMessage struct {
 
 // fetchLoop fills the fetchChan with new stream messages.
 func (sc *SimpleConsumer[T]) fetchLoop() {
+	defer close(sc.errorChan)
+	defer close(sc.fetchChan)
+
 	fetchedIds := copyMap(sc.seenIds)
 	stBuf := make([]string, 2*len(fetchedIds))
 
@@ -113,8 +121,6 @@ func (sc *SimpleConsumer[T]) fetchLoop() {
 
 // consumeLoop forwards messages from fetchChan and errorChan to consumeChan.
 func (sc *SimpleConsumer[T]) consumeLoop() {
-	defer close(sc.errorChan)
-	defer close(sc.fetchChan)
 	defer close(sc.consumeChan)
 
 	for {
@@ -154,4 +160,9 @@ func (sc *SimpleConsumer[T]) read(fetchIds map[string]string, stBuf []string) ([
 		Count:   sc.cfg.Count,
 	})
 	return res.Result()
+}
+
+// Close stops the consumer and closes all channels.
+func (sc *SimpleConsumer[T]) Close() {
+	sc.closeFunc()
 }
