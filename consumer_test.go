@@ -68,7 +68,7 @@ func TestConsumer_ClientError(t *testing.T) {
 	msg := <-cs.Chan()
 	assert.NotNil(t, msg.Err)
 	assert.True(t, msg.IsLast())
-	assert.IsType(t, ClientError{}, msg.Err)
+	assert.IsType(t, ReadError{}, msg.Err)
 }
 
 func TestConsumer_ParserError(t *testing.T) {
@@ -120,6 +120,8 @@ func (bmc benchmarkClientMock) XRead(ctx context.Context, a *redis.XReadArgs) *r
 // So the theoretical target should be about 1000 ns (1 ms), giving throughput of 1 M/s entries.
 // However currently results are in range 1200-1800 ns
 func BenchmarkConsumer(b *testing.B) {
+	b.SetParallelism(1)
+
 	msgbuf := make([]redis.XMessage, 5000)
 	for i := 0; i < len(msgbuf); i++ {
 		msgbuf[i] = redis.XMessage{

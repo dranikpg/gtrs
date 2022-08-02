@@ -18,21 +18,19 @@ func main() {
 		DB:       0,  // use default DB
 	})
 
-	cs := NewConsumer[TestMessage](context.TODO(), rdb, StreamIds{"s1": "0"})
+	cs := NewGroupConsumer[TestMessage](context.TODO(), rdb, "g1", "c1", "s1", "0-0")
 	defer cs.Close()
+	defer cs.AwaitAcks()
 
-	var msg Message[TestMessage]
-	for msg = range cs.Chan() {
+	for msg := range cs.Chan() {
 		if msg.Err != nil {
-			switch t := msg.Err.(type) {
-			case ClientError:
-				panic(t)
-			case ParsingError:
-				fmt.Println("failed to parse", t.Data, "reason", t.Err)
-			}
+			break
 		}
-	}
-	if msg.Err != nil {
 		fmt.Println(msg)
+		fmt.Scan(new(int))
+		cs.Ack(msg)
+		cs.AwaitAcks()
 	}
+	fmt.Println("---")
+	fmt.Println(cs.RemainingAcks())
 }

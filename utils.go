@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -33,6 +34,26 @@ func toMessage[T any](rm redis.XMessage, stream string) Message[T] {
 		Stream: stream,
 		Err:    err,
 		Data:   data,
+	}
+}
+
+// sendCheckCancel sends a generic message without blocking cancellation.
+// returns true if cancelled.
+func sendCheckCancel[M any](ctx context.Context, ch chan M, m M) bool {
+	select {
+	case <-ctx.Done():
+		return true
+	case ch <- m:
+		return false
+	}
+}
+
+func checkCancel(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		return true
+	default:
+		return false
 	}
 }
 

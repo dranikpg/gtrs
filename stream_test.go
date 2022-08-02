@@ -93,7 +93,7 @@ func TestStream_RangeInterval(t *testing.T) {
 
 	_, err = stream.Range(ctx, "??", "??")
 	assert.NotNil(t, err)
-	assert.IsType(t, ClientError{}, err)
+	assert.IsType(t, ReadError{}, err)
 }
 
 func TestStream_Add(t *testing.T) {

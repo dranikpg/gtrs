@@ -29,10 +29,10 @@ type SimpleConsumer[T any] struct {
 
 	cfg SimpleConsumerConfig
 
-	errorChan   chan error
-	fetchChan   chan fetchMessage
-	consumeChan chan Message[T]
-	seenIds     StreamIds
+	fetchErrChan chan error
+	fetchChan    chan fetchMessage
+	consumeChan  chan Message[T]
+	seenIds      StreamIds
 
 	closeFunc func()
 }
@@ -52,14 +52,14 @@ func NewConsumer[T any](ctx context.Context, rdb redis.Cmdable, ids StreamIds, c
 	ctx, closeFunc := context.WithCancel(ctx)
 
 	sc := &SimpleConsumer[T]{
-		ctx:         ctx,
-		rdb:         rdb,
-		cfg:         cfg,
-		errorChan:   make(chan error),
-		fetchChan:   make(chan fetchMessage),
-		consumeChan: make(chan Message[T]),
-		seenIds:     ids,
-		closeFunc:   closeFunc,
+		ctx:          ctx,
+		rdb:          rdb,
+		cfg:          cfg,
+		fetchErrChan: make(chan error),
+		fetchChan:    make(chan fetchMessage, cfg.BufferSize),
+		consumeChan:  make(chan Message[T]),
+		seenIds:      ids,
+		closeFunc:    closeFunc,
 	}
 
 	go sc.fetchLoop()
@@ -83,37 +83,32 @@ func (sc *SimpleConsumer[T]) SeenIds() StreamIds {
 	return sc.seenIds
 }
 
-// fetchMessage is used for sending a redis.XMessage together with its corresponding stream.
-type fetchMessage struct {
-	stream  string
-	message redis.XMessage
-}
-
 // fetchLoop fills the fetchChan with new stream messages.
 func (sc *SimpleConsumer[T]) fetchLoop() {
-	defer close(sc.errorChan)
+	defer close(sc.fetchErrChan)
 	defer close(sc.fetchChan)
 
 	fetchedIds := copyMap(sc.seenIds)
 	stBuf := make([]string, 2*len(fetchedIds))
 
 	for {
-		res, err := sc.read(fetchedIds, stBuf)
+		// Explicit check for context cancellation.
+		// In case select chooses other channels over cancellation in a streak.
+		if checkCancel(sc.ctx) {
+			return
+		}
 
+		res, err := sc.read(fetchedIds, stBuf)
 		if err != nil {
-			sc.errorChan <- err
+			sendCheckCancel(sc.ctx, sc.fetchErrChan, err)
 			return
 		}
 
 		for _, stream := range res {
 			for _, rawMsg := range stream.Messages {
 				msg := fetchMessage{stream: stream.Stream, message: rawMsg}
-				select {
-				case <-sc.ctx.Done():
-					return
-				case sc.fetchChan <- msg:
-					fetchedIds[stream.Stream] = rawMsg.ID
-				}
+				sendCheckCancel(sc.ctx, sc.fetchChan, msg)
+				fetchedIds[stream.Stream] = rawMsg.ID
 			}
 		}
 	}
@@ -130,8 +125,8 @@ func (sc *SimpleConsumer[T]) consumeLoop() {
 		select {
 		case <-sc.ctx.Done():
 			return
-		case err := <-sc.errorChan:
-			sc.consumeChan <- Message[T]{Err: ClientError{clientError: err}}
+		case err := <-sc.fetchErrChan:
+			sc.consumeChan <- Message[T]{Err: ReadError{Err: err}}
 			return
 		case msg = <-sc.fetchChan:
 		}
@@ -154,12 +149,11 @@ func (sc *SimpleConsumer[T]) read(fetchIds map[string]string, stBuf []string) ([
 		stBuf[idx+offset] = v
 		idx += 1
 	}
-	res := sc.rdb.XRead(sc.ctx, &redis.XReadArgs{
+	return sc.rdb.XRead(sc.ctx, &redis.XReadArgs{
 		Streams: stBuf,
 		Block:   sc.cfg.Block,
 		Count:   sc.cfg.Count,
-	})
-	return res.Result()
+	}).Result()
 }
 
 // Close stops the consumer and closes all channels.
