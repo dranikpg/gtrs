@@ -1,4 +1,4 @@
-package main
+package gtrs
 
 import (
 	"context"
@@ -9,10 +9,12 @@ import (
 	"github.com/go-redis/redis/v8"
 )
 
+// ConvertibleTo is implemented by types that can convert themselves to a map.
 type ConvertibleTo interface {
 	ToMap() map[string]any
 }
 
+// ConvertibleFrom is implemented by types that can load themselves from a map.
 type ConvertibleFrom interface {
 	FromMap(map[string]any) error
 }

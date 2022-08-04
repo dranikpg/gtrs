@@ -1,4 +1,4 @@
-package main
+package gtrs
 
 import (
 	"context"
@@ -73,7 +73,7 @@ func (sc *SimpleConsumer[T]) Chan() <-chan Message[T] {
 	return sc.consumeChan
 }
 
-// SeenIds returns a StreamIds that shows, up to which the streams were consumed.
+// SeenIds returns a StreamIds that shows, up to which entry the streams were consumed.
 //
 // The StreamIds can be used to construct a new SimpleConsumer that will
 // pick up where this left off.
@@ -81,6 +81,11 @@ func (sc *SimpleConsumer[T]) SeenIds() StreamIds {
 	runtime.Gosched() // TODO: invent better fix to sync ids on time
 	//e.g. accept last seen id
 	return sc.seenIds
+}
+
+// Close stops the consumer and closes all channels.
+func (sc *SimpleConsumer[T]) Close() {
+	sc.closeFunc()
 }
 
 // fetchLoop fills the fetchChan with new stream messages.
@@ -118,26 +123,27 @@ func (sc *SimpleConsumer[T]) fetchLoop() {
 func (sc *SimpleConsumer[T]) consumeLoop() {
 	defer close(sc.consumeChan)
 
+	var msg fetchMessage
+
 	for {
-		var msg fetchMessage
+		// Explicit cancellation check.
+		if checkCancel(sc.ctx) {
+			return
+		}
 
 		// Listen for fetch message, error or context cancellation.
 		select {
 		case <-sc.ctx.Done():
 			return
 		case err := <-sc.fetchErrChan:
-			sc.consumeChan <- Message[T]{Err: ReadError{Err: err}}
+			sendCheckCancel(sc.ctx, sc.consumeChan, Message[T]{Err: ReadError{Err: err}})
 			return
 		case msg = <-sc.fetchChan:
 		}
 
-		// Send message.
-		select {
-		case <-sc.ctx.Done():
-			return
-		case sc.consumeChan <- toMessage[T](msg.message, msg.stream):
-			sc.seenIds[msg.stream] = msg.message.ID
-		}
+		// Send message to consumer.
+		sendCheckCancel(sc.ctx, sc.consumeChan, toMessage[T](msg.message, msg.stream))
+		sc.seenIds[msg.stream] = msg.message.ID
 	}
 }
 
@@ -154,9 +160,4 @@ func (sc *SimpleConsumer[T]) read(fetchIds map[string]string, stBuf []string) ([
 		Block:   sc.cfg.Block,
 		Count:   sc.cfg.Count,
 	}).Result()
-}
-
-// Close stops the consumer and closes all channels.
-func (sc *SimpleConsumer[T]) Close() {
-	sc.closeFunc()
 }

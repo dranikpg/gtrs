@@ -1,4 +1,4 @@
-package main
+package gtrs
 
 import (
 	"context"
@@ -22,7 +22,7 @@ type GroupConsumer[T any] struct {
 
 	// The following might look like totally over engineered
 	// but is the minimal setup for seamless communication and
-	// control of three goroutines
+	// control of three goroutines (fetch, ack, consume).
 	consumeChan   chan Message[T]    // the usual non-buffered out facing consume chan
 	fetchErrChan  chan error         // fetch errors
 	fetchChan     chan fetchMessage  // fetch results
@@ -140,6 +140,7 @@ func (gc *GroupConsumer[T]) fetchLoop() {
 					}
 				}
 			}
+
 			if len(stream.Messages) == 0 && gc.seenId != ">" {
 				gc.seenId = ">"
 			}
@@ -203,6 +204,8 @@ func (gc *GroupConsumer[T]) collectMissedAck() {
 // acknowledgeLoop send XAcks for ids received from ackChan.
 func (gc *GroupConsumer[T]) acknowledgeLoop() {
 	defer close(gc.ackErrChan)
+	defer close(gc.ackBusyChan)
+	defer close(gc.ackChan)
 	defer gc.collectMissedAck()
 
 	var msg string

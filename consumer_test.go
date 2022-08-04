@@ -1,4 +1,4 @@
-package main
+package gtrs
 
 import (
 	"context"
@@ -117,8 +117,10 @@ func (bmc benchmarkClientMock) XRead(ctx context.Context, a *redis.XReadArgs) *r
 //
 // An unbuffered channel read takes about 100-150 ns, a buffered channel read takes up to 100ns.
 // A goroutine wakeup takes less than 100ns.
-// So the theoretical target should be about 1000 ns (1 ms), giving throughput of 1 M/s entries.
-// However currently results are in range 1200-1800 ns
+//
+// The current implementation takes about 400-600 ns for a single loop iteration. That is not optimal,
+// but gives nonetheless an acceptable thoughput of 2 M/s, which is likely to be faster than
+// any ordinary users needs.
 func BenchmarkConsumer(b *testing.B) {
 	b.SetParallelism(1)
 

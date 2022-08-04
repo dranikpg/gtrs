@@ -1,4 +1,4 @@
-package main
+package gtrs
 
 import (
 	"fmt"
@@ -14,24 +14,26 @@ type Message[T any] struct {
 	Data   T
 }
 
-// IsLast returns true if the consumer closed after this message
+// IsLast returns true if the consumer closed after this message.
 func (msg Message[T]) IsLast() bool {
 	_, ok := msg.Err.(ReadError)
 	return ok
 }
 
 // fetchMessage is used for sending a redis.XMessage together with its corresponding stream.
+// Used in consumer fetchloops.
 type fetchMessage struct {
 	stream  string
 	message redis.XMessage
 }
 
+// innerAckError is sent by ackLoop and carries the id of the failed ack request and its cause.
 type innerAckError struct {
 	id    string
 	cause error
 }
 
-// ReadError indicates an erorr with the redis client
+// ReadError indicates an erorr with the redis client.
 type ReadError struct {
 	Err error
 }
@@ -44,6 +46,7 @@ func (ce ReadError) Error() string {
 	return fmt.Sprintf("read error: %v", ce.Err)
 }
 
+// AckError indicates that an acknowledgement request failed.
 type AckError struct {
 	Err error
 }
@@ -56,7 +59,7 @@ func (ae AckError) Error() string {
 	return fmt.Sprintf("acknowledge error: cause: %v", ae.Err)
 }
 
-// ParsingError indicates an error during parsing
+// ParsingError indicates an error during parsing.
 type ParsingError struct {
 	Data map[string]interface{}
 	Err  error
