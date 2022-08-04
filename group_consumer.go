@@ -23,13 +23,13 @@ type GroupConsumer[T any] struct {
 	// The following might look like totally over engineered
 	// but is the minimal setup for seamless communication and
 	// control of three goroutines (fetch, ack, consume).
-	consumeChan   chan Message[T]    // the usual non-buffered out facing consume chan
-	fetchErrChan  chan error         // fetch errors
-	fetchChan     chan fetchMessage  // fetch results
-	ackErrChan    chan innerAckError // ack errors
-	ackChan       chan string        // ack requests
-	ackBusyChan   chan struct{}      // block for waiting for ack to empty request ack chan
-	ackRemainChan chan []string      // one sized immediately closed chan for storing unfinished acks
+	consumeChan   chan Message[T]     // the usual non-buffered out facing consume chan
+	fetchErrChan  chan error          // fetch errors
+	fetchChan     chan fetchMessage   // fetch results
+	ackErrChan    chan innerAckError  // ack errors
+	ackChan       chan string         // ack requests
+	ackBusyChan   chan struct{}       // block for waiting for ack to empty request ack chan
+	remainingAcks map[string]struct{} // failed acks
 
 	name   string
 	group  string
@@ -66,7 +66,7 @@ func NewGroupConsumer[T any](ctx context.Context, rdb redis.Cmdable, group, name
 		ackErrChan:    make(chan innerAckError, 1),
 		ackChan:       make(chan string, cfg.AckBufferSize),
 		ackBusyChan:   make(chan struct{}),
-		ackRemainChan: make(chan []string, 1),
+		remainingAcks: make(map[string]struct{}),
 		name:          name,
 		group:         group,
 		stream:        stream,
@@ -112,7 +112,16 @@ func (gc *GroupConsumer[T]) RemainingAcks() []string {
 	default:
 		gc.Close()
 	}
-	return <-gc.ackRemainChan
+
+	// Wait for close (or pause).
+	<-gc.ackBusyChan
+
+	out := make([]string, len(gc.remainingAcks))
+	var i = 0
+	for id := range gc.remainingAcks {
+		out[i] = id
+	}
+	return out
 }
 
 // fetchLoop fills the fetchChan with new entries.
@@ -185,28 +194,24 @@ func (gc *GroupConsumer[T]) consumeLoop() {
 	}
 }
 
-// collectMissedAck drains ackErrChan and ackChan for missed ack requests.
-func (gc *GroupConsumer[T]) collectMissedAck() {
-	var ids []string
-	for more := true; more; {
+func (gc *GroupConsumer[T]) fillRemainingAcks() {
+	var more = true
+	for more {
 		select {
-		case msg := <-gc.ackErrChan:
-			ids = append(ids, msg.id)
-		case msg := <-gc.ackChan:
-			ids = append(ids, msg)
+		case id := <-gc.ackChan:
+			gc.remainingAcks[id] = struct{}{}
 		default:
 			more = false
 		}
 	}
-	gc.ackRemainChan <- ids
 }
 
 // acknowledgeLoop send XAcks for ids received from ackChan.
 func (gc *GroupConsumer[T]) acknowledgeLoop() {
 	defer close(gc.ackErrChan)
-	defer close(gc.ackBusyChan)
 	defer close(gc.ackChan)
-	defer gc.collectMissedAck()
+	defer close(gc.ackBusyChan)
+	defer gc.fillRemainingAcks()
 
 	var msg string
 
@@ -237,7 +242,10 @@ func (gc *GroupConsumer[T]) acknowledgeLoop() {
 		err := gc.ack(msg)
 
 		if err != nil {
+			gc.remainingAcks[msg] = struct{}{}
 			sendCheckCancel(gc.ctx, gc.ackErrChan, innerAckError{id: msg, cause: err})
+		} else {
+			delete(gc.remainingAcks, msg)
 		}
 	}
 }

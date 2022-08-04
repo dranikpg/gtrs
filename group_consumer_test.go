@@ -114,11 +114,14 @@ type remainingAckMock struct {
 }
 
 func (sc *remainingAckMock) XAck(ctx context.Context, stream, group string, ids ...string) *redis.IntCmd {
-	if ids[0] == "0-0" {
+	if ids[0] == "0-0" || ids[0] == "0-1" {
 		return redis.NewIntResult(0, errors.New("must fail"))
 	} else {
-		<-time.After(1000 * time.Second)
-		return redis.NewIntResult(1, nil)
+		select {
+		case <-ctx.Done():
+		case <-time.After(1000 * time.Second):
+		}
+		return redis.NewIntResult(0, errors.New("must cancel"))
 	}
 }
 
@@ -142,6 +145,8 @@ func TestGroupConsumer_RemainingAck(t *testing.T) {
 	for i := 0; i < ackCount; i += 1 {
 		cs.Ack(Message[City]{ID: fmt.Sprintf("0-%v", i)})
 	}
+
+	time.Sleep(50 * time.Millisecond)
 
 	rm := cs.RemainingAcks()
 
