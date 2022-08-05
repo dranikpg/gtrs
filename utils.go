@@ -25,7 +25,7 @@ func toMessage[T any](rm redis.XMessage, stream string) Message[T] {
 	var err error
 
 	if err = mapToStruct(&data, rm.Values); err != nil {
-		err = ParsingError{
+		err = ParseError{
 			Data: rm.Values,
 			Err:  err,
 		}
@@ -57,6 +57,15 @@ func checkCancel(ctx context.Context) bool {
 	default:
 		return false
 	}
+}
+
+type FieldParseError struct {
+	Field string
+	Value any
+}
+
+func (fpe FieldParseError) Error() string {
+	return fmt.Sprintf("failed to parse field %v, got %v", fpe.Field, fpe.Value)
 }
 
 // structToMap convert a struct to a map.
@@ -101,7 +110,7 @@ func mapToStruct(st any, data map[string]any) error {
 		if val := valueFromString(field.Type().Kind(), stval); val != nil {
 			field.Set(reflect.ValueOf(val))
 		} else {
-			return fmt.Errorf("failed to parse %v as %v", k, field.Type().Kind())
+			return FieldParseError{Field: k, Value: v}
 		}
 	}
 

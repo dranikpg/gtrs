@@ -84,8 +84,29 @@ func TestConsumer_ParserError(t *testing.T) {
 	msg := <-cs.Chan()
 	assert.NotNil(t, msg.Err)
 	assert.False(t, msg.IsLast())
-	assert.IsType(t, ParsingError{}, msg.Err)
+	assert.IsType(t, ParseError{}, msg.Err)
 	assert.Equal(t, errNotParsable, errors.Unwrap(msg.Err))
+	assert.ErrorIs(t, msg.Err, errNotParsable)
+}
+
+func TestConsuer_ParseError2(t *testing.T) {
+	type FPE struct {
+		Name float64
+	}
+
+	ms, rdb := startMiniredis(t)
+	cs := NewConsumer[FPE](context.TODO(), rdb, StreamIds{"s1": "0-0"}, SimpleConsumerConfig{
+		Block:      0,
+		Count:      0,
+		BufferSize: 0,
+	})
+
+	ms.XAdd("s1", "*", []string{"Name", "FAILFAIL"})
+
+	msg := <-cs.Chan()
+	assert.NotNil(t, msg.Err)
+	var fpe FieldParseError
+	assert.ErrorAs(t, msg.Err, &fpe)
 }
 
 func TestConsumer_Close(t *testing.T) {

@@ -59,16 +59,16 @@ func (ae AckError) Error() string {
 	return fmt.Sprintf("acknowledge error: cause: %v", ae.Err)
 }
 
-// ParsingError indicates an error during parsing.
-type ParsingError struct {
+// ParseError indicates an error during parsing.
+type ParseError struct {
 	Data map[string]interface{}
 	Err  error
 }
 
-func (pe ParsingError) Unwrap() error {
+func (pe ParseError) Unwrap() error {
 	return pe.Err
 }
 
-func (pe ParsingError) Error() string {
+func (pe ParseError) Error() string {
 	return fmt.Sprintf("parsing error: cause: %v", pe.Err)
 }
