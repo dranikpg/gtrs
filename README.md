@@ -1,6 +1,6 @@
-### Go Typed Redis Streams
+# Go Typed Redis Streams
 
-Effectively reading redis streams requires some boilerplate: counting ids, prefetching and buffering entries, asynchronously sending acknowledgements and parsing entries. What if it was just:
+Effectively reading [Redis streams](https://redis.io/docs/manual/data-types/streams/) requires some boilerplate: counting ids, prefetching and buffering entries, asynchronously sending acknowledgements and parsing entries. What if it was just this?
 
 ```go
 consumer := NewConsumer[MyType](...)
@@ -9,67 +9,63 @@ for msg := range consumer.Chan() {
 }
 ```
 
-Wait...it is!
+Wait...it is! 🔥
 
 ### Quickstart
 
-You'll need [go-redis/redis](https://github.com/go-redis/redis)
-
-#### Types
-
-Define a type that represents your stream data:
+Define a type that represents your stream data. 
+It'll be parsed automatically. You can also use [ConvertibleFrom]() and [ConvertibleTo]() to do custom parsing.
 
 ```go
 type Event struct {
-	Name     string
-	Priority int
+  Name     string
+  Priority int
 }
 ```
 
-It'll be parsed automatically. You can also use [ConvertibleFrom]() and [ConvertibleTo]() to do custom parsing.
-
-#### Streams
-
 #### Consumers
 
-Create a new consumer. Specify context, client and where to start reading. Make sure to specify [custom options](), if you don't like the default ones.
+Create a new consumer. Specify context, a [redis client](https://github.com/go-redis/redis) and where to start reading. Make sure to specify [custom options](), if you don't like the default ones (buffer sizes and blocking time).
 
 ```go
 consumer := NewConsumer[Event](ctx, rdb, StreamIds{"my-stream": "$"})
 defer consumer.Close()
 ```
 
-Then you can start reading with a channel.
+Then you can start reading.
 
 ```go
 for msg := range cs.Chan() {
-	if msg.Err != nil {
-		continue
-	}
-	fmt.Println(msg.Stream) // source stream
-	fmt.Println(msg.ID)     // entry id
-	fmt.Println(msg.Data)   // Event
+  if msg.Err != nil {
+    continue
+  }
+  fmt.Println(msg.Stream) // source stream
+  fmt.Println(msg.ID)     // entry id
+  fmt.Println(msg.Data)   // Event
 }
 ```
 
-But what about error handling? This is where the simplicty fades a little, but there's no way round them.
+But what about error handling? This is where the simplicty fades a little, but there's no way round it :)
 
-There are only two possible errors: ReadError and ParseError. The consumer stops on a ReadError, but continues in case of a ParseError.
+
+The channel is used not only for new messages, but also for errors. There are only two possible errors: [ReadError]() and [ParseError](). The consumer stops on a ReadError, but continues in case of a ParseError.
 
 ```go
-// Always caused by the client. Consumer closes after this error.
+// Always caused by the redis client. Consumer closes after this error.
 if _, ok := msg.Err.(ReadError); ok {
-	fmt.Println(errors.Unwrap(readErr)) // get the redis error
+  _ = errors.Unwrap(readErr) // get the redis error
+  // msg.ID is empty, no real entry associated with it
 }
 
-// Check for your custom parsing errors if you use ConvertibleFrom. They're always wrapped inside a ParseError.
+// Check for your custom parsing errors if you use ConvertibleFrom. 
+// They're always wrapped inside a ParseError.
 if errors.Is(msg.Err, errMyCustom) {
 }
 
 // Check for a FieldParseError. It's wrapped inside a ParseError.
 var fpe FieldParseError
 if errors.As(msg.Err, &fpe) {
-	fmt.Println("failed on", fpe.Field, "got", fpe.Value)
+  fmt.Println("failed on", fpe.Field, "got", fpe.Value)
 }
 
 ```
@@ -80,6 +76,37 @@ seen := cs.SeenIds()
 ```
 
 #### Group Consumers
+
+Group consumers work like regular consumers. They also allow sending acknowledgements, which are processed asynchronously.
+
+```go
+cs := NewGroupConsumer[Event](ctx, rdb, "group", "consumer", "stream", ">")
+
+for msg := range cs.Chan() {
+  // request an acknowledgement
+  cs.Ack(msg)
+}
+```
+
+Of course we care about correctness:
+```go
+// wait until all acknowledgements are sent
+// or the consumer stops (e.g. context close)
+cs.AwaitAcks()
+
+// Stop consumer and get list of unsuccessful
+// or unprocessed acknowledgements
+failed := cs.RemainingAcks()
+```
+
+Along with [ReadError]() and [ParseError](), there is one more in this case - [AckError]()
+
+```go
+if _, ok := msg.Err.(AckError); ok {
+  _ = errors.Unwrap(msg.Err) // get the redis error
+  fmt.Println("Failed to acknowledge", msg.ID)
+}
+```
 
 ### Installation
 
