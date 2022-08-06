@@ -2,7 +2,6 @@ package gtrs
 
 import (
 	"context"
-	"runtime"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -31,7 +30,7 @@ type SimpleConsumer[T any] struct {
 
 	fetchErrChan chan error
 	fetchChan    chan fetchMessage
-	consumeChan  chan Message[T]
+	consumeChan  chan Message[T] // user facing non buffered channel
 	seenIds      StreamIds
 
 	closeFunc func()
@@ -77,9 +76,17 @@ func (sc *SimpleConsumer[T]) Chan() <-chan Message[T] {
 //
 // The StreamIds can be used to construct a new SimpleConsumer that will
 // pick up where this left off.
-func (sc *SimpleConsumer[T]) SeenIds() StreamIds {
-	runtime.Gosched() // TODO: invent better fix to sync ids on time
-	//e.g. accept last seen id
+func (sc *SimpleConsumer[T]) CloseGetSeenIds() StreamIds {
+	select {
+	case <-sc.ctx.Done():
+	default:
+		sc.Close()
+	}
+
+	// Await close.
+	<-sc.consumeChan
+
+	//e.g. return last seen ids
 	return sc.seenIds
 }
 
@@ -105,7 +112,7 @@ func (sc *SimpleConsumer[T]) fetchLoop() {
 
 		res, err := sc.read(fetchedIds, stBuf)
 		if err != nil {
-			sendCheckCancel(sc.ctx, sc.fetchErrChan, err)
+			sendCheckCancel(sc.ctx, sc.consumeChan, Message[T]{Err: ReadError{Err: err}})
 			return
 		}
 
@@ -142,8 +149,9 @@ func (sc *SimpleConsumer[T]) consumeLoop() {
 		}
 
 		// Send message to consumer.
-		sendCheckCancel(sc.ctx, sc.consumeChan, toMessage[T](msg.message, msg.stream))
-		sc.seenIds[msg.stream] = msg.message.ID
+		if !sendCheckCancel(sc.ctx, sc.consumeChan, toMessage[T](msg.message, msg.stream)) {
+			sc.seenIds[msg.stream] = msg.message.ID
+		}
 	}
 }
 

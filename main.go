@@ -2,7 +2,7 @@ package gtrs
 
 import (
 	"context"
-	"fmt"
+	"errors"
 
 	"github.com/go-redis/redis/v8"
 )
@@ -24,22 +24,18 @@ func main() {
 	})
 	ctx := context.TODO()
 
-	cs := NewConsumer[Event](ctx, rdb, StreamIds{"my-stream": "$"})
+	cs := NewGroupConsumer[Event](ctx, rdb, "group", "consumer", "stream", ">")
 	defer cs.Close()
 
-	var msg Message[Event]
-	for msg = range cs.Chan() {
-		if msg.Err != nil {
-			continue
+	for msg := range cs.Chan() {
+		if _, ok := msg.Err.(AckError); ok {
+			_ = errors.Unwrap(msg.Err) // get the redis error
 		}
-		fmt.Println(msg.Stream) // source stream
-		fmt.Println(msg.ID)     // entry id
-		fmt.Println(msg.Data)   // your data (the Event)
 
-		if pe, ok := msg.Err.(ParseError); ok {
-			fmt.Println(pe)
-		}
+		// handle
+		cs.Ack(msg)
 	}
 
-	cs.SeenIds()
+	cs.CloseGetRemainingAcks()
+
 }

@@ -89,7 +89,7 @@ func TestConsumer_ParserError(t *testing.T) {
 	assert.ErrorIs(t, msg.Err, errNotParsable)
 }
 
-func TestConsuer_ParseError2(t *testing.T) {
+func TestConsuer_FieldParseError(t *testing.T) {
 	type FPE struct {
 		Name float64
 	}
@@ -105,8 +105,12 @@ func TestConsuer_ParseError2(t *testing.T) {
 
 	msg := <-cs.Chan()
 	assert.NotNil(t, msg.Err)
+
 	var fpe FieldParseError
 	assert.ErrorAs(t, msg.Err, &fpe)
+	assert.Equal(t, "Name", fpe.Field)
+	assert.Equal(t, "FAILFAIL", fpe.Value)
+	assert.ErrorIs(t, msg.Err, FieldParseError{Field: "Name", Value: "FAILFAIL"})
 }
 
 func TestConsumer_Close(t *testing.T) {
@@ -121,6 +125,29 @@ func TestConsumer_Close(t *testing.T) {
 
 	_, ok := <-cs.Chan()
 	assert.False(t, ok)
+}
+
+func TestConsumer_CloseGetSeenIDs(t *testing.T) {
+	var readCount = 100
+	var consumeCount = 75
+
+	ms, rdb := startMiniredis(t)
+	cs := NewConsumer[City](context.TODO(), rdb, StreamIds{"s1": "0-0"}, SimpleConsumerConfig{
+		Block:      0,
+		Count:      0,
+		BufferSize: 0,
+	})
+
+	for i := 1; i <= readCount; i++ {
+		ms.XAdd("s1", fmt.Sprintf("0-%v", i), []string{"Name", "Town"})
+	}
+
+	for i := 1; i <= consumeCount; i++ {
+		<-cs.Chan()
+	}
+
+	seen := cs.CloseGetSeenIds()
+	assert.Equal(t, fmt.Sprintf("0-%v", consumeCount), seen["s1"])
 }
 
 type benchmarkClientMock struct {

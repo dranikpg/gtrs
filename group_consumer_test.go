@@ -148,7 +148,7 @@ func TestGroupConsumer_RemainingAck(t *testing.T) {
 
 	time.Sleep(50 * time.Millisecond)
 
-	rm := cs.RemainingAcks()
+	rm := cs.CloseGetRemainingAcks()
 
 	// Neither ack request finished - expect as many as sent
 	assert.Len(t, rm, ackCount)

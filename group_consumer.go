@@ -82,7 +82,10 @@ func NewGroupConsumer[T any](ctx context.Context, rdb redis.Cmdable, group, name
 }
 
 // Ack requests an asynchronous XAck acknowledgement call for the passed message.
-// This call blocks only if the inner ack buffer is full.
+// This call blocks only if the inner ack buffer is full or errors are not processed.
+//
+// If multiple ack requests fail, the consumer will wait for the errors to be processed
+// via Chan().
 func (gc *GroupConsumer[T]) Ack(msg Message[T]) {
 	gc.ackChan <- msg.ID
 }
@@ -100,13 +103,13 @@ func (gc *GroupConsumer[T]) Chan() <-chan Message[T] {
 	return gc.consumeChan
 }
 
-// RemainingAcks closes the consumer (if not already) and returns
+// CloseGetRemainingAcks closes the consumer (if not already) and returns
 // a slice of unprocessed ack requests.
 //
 // NOTE: this function CLOSES the consumer and can only be called ONCE.
 // This is because it drains all internal channels and waits for the goroutine
 // to complete.
-func (gc *GroupConsumer[T]) RemainingAcks() []string {
+func (gc *GroupConsumer[T]) CloseGetRemainingAcks() []string {
 	select {
 	case <-gc.ctx.Done():
 	default:

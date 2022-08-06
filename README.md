@@ -29,7 +29,6 @@ Create a new consumer. Specify context, a [redis client](https://github.com/go-r
 
 ```go
 consumer := NewConsumer[Event](ctx, rdb, StreamIds{"my-stream": "$"})
-defer consumer.Close()
 ```
 
 Then you can start reading.
@@ -72,7 +71,7 @@ if errors.As(msg.Err, &fpe) {
 
 If you want to start reading from where you left off, then you can save the last seen ids.
 ```go
-seen := cs.SeenIds()
+seen := cs.CloseGetSeenIds()
 ```
 
 #### Group Consumers
@@ -96,7 +95,7 @@ cs.AwaitAcks()
 
 // Stop consumer and get list of unsuccessful
 // or unprocessed acknowledgements
-failed := cs.RemainingAcks()
+failed := cs.CloseGetRemainingAcks()
 ```
 
 Along with [ReadError]() and [ParseError](), there is one more in this case - [AckError]()
