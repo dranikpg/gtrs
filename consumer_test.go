@@ -13,7 +13,7 @@ import (
 
 func TestConsumer_SimpleSync(t *testing.T) {
 	ms, rdb := startMiniredis(t)
-	cs := NewConsumer[City](context.TODO(), rdb, StreamIds{"s1": "0-0"}, SimpleConsumerConfig{
+	cs := NewConsumer[City](context.TODO(), rdb, StreamIDs{"s1": "0-0"}, StreamConsumerConfig{
 		Block:      0,
 		Count:      0,
 		BufferSize: 0,
@@ -43,7 +43,6 @@ func TestConsumer_SimpleSync(t *testing.T) {
 	i := 0
 	for msg := range cs.Chan() {
 		assert.Nil(t, msg.Err)
-		assert.False(t, msg.IsLast())
 		assert.Equal(t, cities[i], msg.Data)
 		assert.Equal(t, int32(i+1), atomic.LoadInt32(&sent))
 
@@ -57,7 +56,7 @@ func TestConsumer_SimpleSync(t *testing.T) {
 
 func TestConsumer_ClientError(t *testing.T) {
 	ms, rdb := startMiniredis(t)
-	cs := NewConsumer[City](context.TODO(), rdb, StreamIds{"s1": "0-0"}, SimpleConsumerConfig{
+	cs := NewConsumer[City](context.TODO(), rdb, StreamIDs{"s1": "0-0"}, StreamConsumerConfig{
 		Block:      0,
 		Count:      0,
 		BufferSize: 0,
@@ -67,13 +66,12 @@ func TestConsumer_ClientError(t *testing.T) {
 
 	msg := <-cs.Chan()
 	assert.NotNil(t, msg.Err)
-	assert.True(t, msg.IsLast())
 	assert.IsType(t, ReadError{}, msg.Err)
 }
 
 func TestConsumer_ParserError(t *testing.T) {
 	ms, rdb := startMiniredis(t)
-	cs := NewConsumer[NonParsable](context.TODO(), rdb, StreamIds{"s1": "0-0"}, SimpleConsumerConfig{
+	cs := NewConsumer[NonParsable](context.TODO(), rdb, StreamIDs{"s1": "0-0"}, StreamConsumerConfig{
 		Block:      0,
 		Count:      0,
 		BufferSize: 0,
@@ -83,7 +81,6 @@ func TestConsumer_ParserError(t *testing.T) {
 
 	msg := <-cs.Chan()
 	assert.NotNil(t, msg.Err)
-	assert.False(t, msg.IsLast())
 	assert.IsType(t, ParseError{}, msg.Err)
 	assert.Equal(t, errNotParsable, errors.Unwrap(msg.Err))
 	assert.ErrorIs(t, msg.Err, errNotParsable)
@@ -95,7 +92,7 @@ func TestConsuer_FieldParseError(t *testing.T) {
 	}
 
 	ms, rdb := startMiniredis(t)
-	cs := NewConsumer[FPE](context.TODO(), rdb, StreamIds{"s1": "0-0"}, SimpleConsumerConfig{
+	cs := NewConsumer[FPE](context.TODO(), rdb, StreamIDs{"s1": "0-0"}, StreamConsumerConfig{
 		Block:      0,
 		Count:      0,
 		BufferSize: 0,
@@ -110,12 +107,12 @@ func TestConsuer_FieldParseError(t *testing.T) {
 	assert.ErrorAs(t, msg.Err, &fpe)
 	assert.Equal(t, "Name", fpe.Field)
 	assert.Equal(t, "FAILFAIL", fpe.Value)
-	assert.NotNil(t, fpe.Cause)
+	assert.NotNil(t, fpe.Err)
 }
 
 func TestConsumer_Close(t *testing.T) {
 	_, rdb := startMiniredis(t)
-	cs := NewConsumer[NonParsable](context.TODO(), rdb, StreamIds{"s1": "0-0"}, SimpleConsumerConfig{
+	cs := NewConsumer[NonParsable](context.TODO(), rdb, StreamIDs{"s1": "0-0"}, StreamConsumerConfig{
 		Block:      0,
 		Count:      0,
 		BufferSize: 0,
@@ -132,7 +129,7 @@ func TestConsumer_CloseGetSeenIDs(t *testing.T) {
 	var consumeCount = 75
 
 	ms, rdb := startMiniredis(t)
-	cs := NewConsumer[City](context.TODO(), rdb, StreamIds{"s1": "0-0"}, SimpleConsumerConfig{
+	cs := NewConsumer[City](context.TODO(), rdb, StreamIDs{"s1": "0-0"}, StreamConsumerConfig{
 		Block:      0,
 		Count:      0,
 		BufferSize: 0,
@@ -183,7 +180,7 @@ func BenchmarkConsumer(b *testing.B) {
 	for _, size := range []uint{0, 10, 100, 1000, 10000} {
 		b.Run(fmt.Sprintf("s-%v", size), func(b *testing.B) {
 			mock := benchmarkClientMock{msgs: msgbuf}
-			cs := NewConsumer[Empty](context.TODO(), mock, StreamIds{"s1": "0-0"}, SimpleConsumerConfig{
+			cs := NewConsumer[Empty](context.TODO(), mock, StreamIDs{"s1": "0-0"}, StreamConsumerConfig{
 				Block:      0,
 				Count:      int64(len(msgbuf)),
 				BufferSize: size,

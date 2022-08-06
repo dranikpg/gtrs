@@ -17,7 +17,7 @@ func NewStream[T any](client redis.Cmdable, stream string) Stream[T] {
 	return Stream[T]{client: client, stream: stream}
 }
 
-// Key returns the redis stream.
+// Key returns the redis stream key.
 func (s Stream[T]) Key() string {
 	return s.stream
 }

@@ -15,8 +15,15 @@ import (
 
 // Consumer groups are not supported in miniredis yet, we'll have to mock clients
 
+type groupCreateMock struct{}
+
+func (gcm groupCreateMock) XGroupCreateMkStream(ctx context.Context, stream, group, start string) *redis.StatusCmd {
+	return redis.NewStatusResult("OK", nil)
+}
+
 type simpleSyncMock struct {
 	*redis.Client
+	groupCreateMock
 	acks int
 }
 
@@ -57,6 +64,7 @@ func TestGroupConsumer_SimpleSync(t *testing.T) {
 
 type switchToNewMock struct {
 	*redis.Client
+	groupCreateMock
 	maxHandout int
 }
 
@@ -111,6 +119,7 @@ func TestGroupConsumer_SwitchToNew(t *testing.T) {
 
 type remainingAckMock struct {
 	*redis.Client
+	groupCreateMock
 }
 
 func (sc *remainingAckMock) XAck(ctx context.Context, stream, group string, ids ...string) *redis.IntCmd {

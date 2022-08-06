@@ -1,6 +1,6 @@
 # Go Typed Redis Streams
 
-Effectively reading [Redis streams](https://redis.io/docs/manual/data-types/streams/) requires some boilerplate: counting ids, prefetching and buffering entries, asynchronously sending acknowledgements and parsing entries. What if it was just the following?
+Effectively reading [Redis streams](https://redis.io/docs/manual/data-types/streams/) requires some boilerplate: counting ids, prefetching and buffering, asynchronously sending acknowledgements and parsing entries. What if it was just the following?
 
 ```go
 consumer := NewConsumer[MyType](...)
@@ -13,100 +13,93 @@ Wait...it is! 🔥
 
 ### Quickstart
 
-Define a type that represents your stream data. It'll be parsed automatically with all field names converted to snake case. You can also use [ConvertibleFrom]() and [ConvertibleTo]() to do custom parsing.
+Define a type that represents your stream data. It'll be parsed automatically with all field names converted to snake case. Missing fields will be skipped silently. You can also use [ConvertibleFrom]() and [ConvertibleTo]() to do custom parsing.
 
 ```go
+// maps to {"name": , "priority": }
 type Event struct {
   Name     string
   Priority int
 }
-// maps to {"name": , "priority": }
 ```
 
 #### Consumers
 
-Create a new consumer. Specify context, a [redis client](https://github.com/go-redis/redis) and where to start reading. Make sure to specify [custom options](), if you don't like the default ones (buffer sizes and blocking time).
+Consumers allow reading redis streams through Go channels. Specify context, a [redis client](https://github.com/go-redis/redis) and where to start reading. Make sure to specify [custom options](), if you don't like the default ones (buffer sizes and blocking time).
 
 ```go
-consumer := NewConsumer[Event](ctx, rdb, StreamIds{"my-stream": "$"})
-```
+consumer := NewConsumer[Event](ctx, rdb, StreamIDs{"my-stream": "$"})
 
-Then you can start reading.
-
-```go
 for msg := range cs.Chan() {
   if msg.Err != nil {
     continue
   }
-  fmt.Println(msg.Stream) // source stream
-  fmt.Println(msg.ID)     // entry id
-  fmt.Println(msg.Data)   // Event
+  var event Event = msg.Data
 }
 ```
 
-But what about error handling? This is where the simplicty fades a little, but there's no way round it :)
-
-
-The channel is used not only for new messages, but also for errors. There are only two possible errors: [ReadError]() and [ParseError](). The consumer stops on a ReadError, but continues in case of a ParseError.
-
+Don't forget to `Close()` the consumer. If you want to start reading again where you left off, you can save the last  StreamIDs.
 ```go
-// Always caused by the redis client. Consumer closes after this error.
-if _, ok := msg.Err.(ReadError); ok {
-  _ = errors.Unwrap(readErr) // get the redis error
-  // msg.ID is empty, no real entry associated with it
-}
-
-// Check for your custom parsing errors if you use ConvertibleFrom. 
-// They're always wrapped inside a ParseError.
-if errors.Is(msg.Err, errMyCustom) {
-}
-
-// Check for a FieldParseError. It's wrapped inside a ParseError.
-var fpe FieldParseError
-if errors.As(msg.Err, &fpe) {
-  fmt.Println("failed on", fpe.Field, "got", fpe.Value)
-}
-
-```
-
-If you want to start reading from where you left off, then you can save the last seen ids.
-```go
-seen := cs.CloseGetSeenIds()
+ids := cs.CloseGetSeenIds()
 ```
 
 #### Group Consumers
 
-Group consumers work like regular consumers. They also allow sending acknowledgements, which are processed asynchronously. Make sure, the consumer group exists - the consumer won't create it for you.
+They work just like regular consumers and allow sending acknowledgements asynchronously.
 
 ```go
-rdb.XGroupCreateMkStream(ctx, "stream", "group", "0-0")
-
 cs := NewGroupConsumer[Event](ctx, rdb, "group", "consumer", "stream", ">")
 
 for msg := range cs.Chan() {
-  // request an acknowledgement
-  cs.Ack(msg)
+  if !cs.Ack(msg) { // blocks only if buffer is full
+    // oh no, the context was cancelled
+  }
 }
 ```
 
-Of course we care about correctness:
+Of course we care about correctness. Not a single error will be lost 🔎
 ```go
-// wait until all acknowledgements are sent
-// or the consumer stops (e.g. context close)
+// Wait for all acknowledgements to complete
 cs.AwaitAcks()
 
-// Stop consumer and get list of unsuccessful
-// or unprocessed acknowledgements
-failed := cs.CloseGetRemainingAcks()
+// Not sent yet or their errors were not consumed
+remaining := cs.CloseGetRemainingAcks()
 ```
 
-Along with [ReadError]() and [ParseError](), there is one more in this case - [AckError]()
+#### Error handling
+
+This is where the simplicity fades a litte, but only a little :) The channel provides not just values, but also errors. Those can be only of three types:
+- ReadError reports a failed XRead/XReadGroup request. Consumer will close the channel after this error
+- AckError reports a failed XAck request
+- ParseError speaks for itself
+
+Consumers don't send errors on cancellation and immediately close the channel.
 
 ```go
-if _, ok := msg.Err.(AckError); ok {
-  _ = errors.Unwrap(msg.Err) // get the redis error
-  fmt.Println("Failed to acknowledge", msg.ID)
+switch errv := msg.Err.(type) {
+case nil: // This interface-nil comparison in safe
+  fmt.Println("Got", msg.Data)
+case ReadError:
+  fmt.Println("ReadError caused by", errv.Err)
+  return // last message in channel
+case AckError:
+  fmt.Printf("Ack failed %v-%v caused by %v\n", msg.Stream, msg.ID, errv.Err)
+case ParseError:
+  fmt.Println("Failed to parse", errv.Data)
 }
+```
+
+All those types are wrapping errors. For example, `ParseError` can be unwrapped to:
+- Find out why the default parser failed (e.g. assigning string to int field)
+- Catch custom errors from `ConvertibleFrom`
+
+```go
+var fpe FieldParseError
+if errors.As(msg.Err, &fpe) {
+  fmt.Printf("Failed to parse field %v because %v", fpe.Field, fpe.Err)
+}
+
+errors.Is(msg.Err, errMyTypeFailedToParse)
 ```
 
 #### Streams
@@ -127,6 +120,8 @@ stream.Add(ctx, Event{
 go get github.com/dranikpg/gtrs
 ```
 
+Gtrs is still in its early stages and might change in further releases.
+
 ### Examples
 
 * [This is a small example]() for reading from three consumers in parallel and handling all types of errors.
@@ -137,4 +132,4 @@ go get github.com/dranikpg/gtrs
 go test -run ^$ -bench BenchmarkConsumer -cpu=1
 ```
 
-The iteration cost on a _mocked client_ is about 500-700 ns depending on buffer sizes, which gives it a **throughput of about 2 million entries a second** 🚀.
+The iteration cost on a _mocked client_ is about 500-700 ns depending on buffer sizes, which gives it a **throughput close to 2 million entries a second** 🚀.

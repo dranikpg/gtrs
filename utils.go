@@ -62,18 +62,22 @@ func checkCancel(ctx context.Context) bool {
 	}
 }
 
+// FieldParseError is returned by the default parser
+// if data for a field is present:
+// - but its not assignable
+// - or the field is of an unsupported type
 type FieldParseError struct {
 	Field string
 	Value any
-	Cause error
+	Err   error
 }
 
 func (fpe FieldParseError) Error() string {
-	return fmt.Sprintf("failed to parse field %v, got %v, because %v", fpe.Field, fpe.Value, fpe.Cause)
+	return fmt.Sprintf("failed to parse field %v, got %v, because %v", fpe.Field, fpe.Value, fpe.Err)
 }
 
 func (fpe FieldParseError) Unwrap() error {
-	return fpe.Cause
+	return fpe.Err
 }
 
 // structToMap convert a struct to a map.
@@ -124,7 +128,7 @@ func mapToStruct(st any, data map[string]any) error {
 
 		val, err := valueFromString(fieldRv.Type().Kind(), stval)
 		if err != nil {
-			return FieldParseError{Field: fieldRt.Name, Value: v, Cause: err}
+			return FieldParseError{Field: fieldRt.Name, Value: v, Err: err}
 		} else {
 			fieldRv.Set(reflect.ValueOf(val))
 		}
@@ -175,7 +179,7 @@ func toSnakeCase(str string) string {
 }
 
 // Get reflect type by generic type.
-// see https://github.com/golang/go/issues/50741
+// see https://github.com/golang/go/issues/50741 for a better solution in the future
 func typeOf[T any]() reflect.Type {
 	return reflect.TypeOf((*T)(nil)).Elem()
 }

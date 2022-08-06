@@ -3,19 +3,24 @@ package gtrs
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/go-redis/redis/v8"
 )
 
-var ErrAckBadRetVal = errors.New("XAck made no acknowledgement (zero return)")
+// ErrAckBadRetVal is caused by XACK not accepting an request by returning 0.
+// This usually indicates that the id is wrong or the stream has no groups.
+var ErrAckBadRetVal = errors.New("XAck made no acknowledgement")
 
 // GroupConsumerConfig provides basic configuration for GroupConsumer.
 type GroupConsumerConfig struct {
-	SimpleConsumerConfig
+	StreamConsumerConfig
 	AckBufferSize uint
 }
 
-// SimpleConsumer is a consumer that reads from a consumer group.
+// GroupConsumer is a consumer that reads from a consumer group and similar to a StreamConsumer.
+// Message acknowledgements can be sent asynchronously via Ack(). The consumer has to be closed
+// to release resources and stop goroutines.
 type GroupConsumer[T any] struct {
 	Consumer[T]
 	ctx context.Context
@@ -47,7 +52,7 @@ type GroupConsumer[T any] struct {
 // NewGroupConsumer creates a new GroupConsumer with optional configuration.
 func NewGroupConsumer[T any](ctx context.Context, rdb redis.Cmdable, group, name, stream, lastID string, cfgs ...GroupConsumerConfig) *GroupConsumer[T] {
 	cfg := GroupConsumerConfig{
-		SimpleConsumerConfig: SimpleConsumerConfig{
+		StreamConsumerConfig: StreamConsumerConfig{
 			Block:      0,
 			Count:      0,
 			BufferSize: 10,
@@ -86,7 +91,7 @@ func NewGroupConsumer[T any](ctx context.Context, rdb redis.Cmdable, group, name
 	return gc
 }
 
-// Ack requests an asynchronous XAck acknowledgement call for the passed message.
+// Ack requests an asynchronous XAck acknowledgement request for the passed message.
 // Returns false if the consumer is closed and this request was not recorded.
 //
 // Ack blocks only if the inner ack buffer is full or errors are not processed.
@@ -104,17 +109,19 @@ func (gc *GroupConsumer[T]) AwaitAcks() {
 	}
 }
 
-// Chan returns the channel for reading messages.
+// Chan returns the main channel with new messages.
+//
+// This channel is closed when:
+// - the consumer is closed
+// - immediately on context cancel
+// - in case of a ReadError
 func (gc *GroupConsumer[T]) Chan() <-chan Message[T] {
 	return gc.consumeChan
 }
 
-// CloseGetRemainingAcks closes the consumer (if not already) and returns
-// a slice of unprocessed ack requests.
-//
-// NOTE: this function CLOSES the consumer and can only be called ONCE.
-// This is because it drains all internal channels and waits for the goroutine
-// to complete.
+// CloseGetRemainingAcks closes the consumer (if not already closed) and returns
+// a slice of unprocessed ack requests. An ack request in unprocessed if it
+// wasn't sent or its error wasn't consumed.
 func (gc *GroupConsumer[T]) CloseGetRemainingAcks() []string {
 	select {
 	case <-gc.ctx.Done():
@@ -129,10 +136,29 @@ func (gc *GroupConsumer[T]) CloseGetRemainingAcks() []string {
 	return gc.lostAcks
 }
 
+// createGroup creates a redis group
+func (gc *GroupConsumer[T]) createGroup() error {
+	createId := gc.seenId
+	if createId == ">" {
+		createId = "$"
+	}
+	_, err := gc.rdb.XGroupCreateMkStream(gc.ctx, gc.stream, gc.group, createId).Result()
+	// BUSYGROUP means the group already exists.
+	if err != nil && !strings.Contains(err.Error(), "BUSYGROUP") {
+		return err
+	}
+	return nil
+}
+
 // fetchLoop fills the fetchChan with new entries.
 func (gc *GroupConsumer[T]) fetchLoop() {
 	defer close(gc.fetchErrChan)
 	defer close(gc.fetchChan)
+
+	if err := gc.createGroup(); err != nil {
+		gc.fetchErrChan <- err
+		return
+	}
 
 	for {
 		res, err := gc.read()
@@ -155,6 +181,7 @@ func (gc *GroupConsumer[T]) fetchLoop() {
 				}
 			}
 
+			// Switch to '>' on empty response
 			if len(stream.Messages) == 0 && gc.seenId != ">" {
 				gc.seenId = ">"
 			}
@@ -165,6 +192,10 @@ func (gc *GroupConsumer[T]) fetchLoop() {
 // recoverRemainingAcks collects all remaining acks from channels to remainingAcks
 func (gc *GroupConsumer[T]) recoverRemainingAcks() {
 	defer close(gc.lostAcksChan)
+
+	// Wait for ackLoop to stop
+	for range gc.ackBusyChan {
+	}
 
 	// Wait for ackChan to close and consume it.
 	for id := range gc.ackChan {

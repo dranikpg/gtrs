@@ -1,3 +1,4 @@
+// gtrs is a library for easily reading Redis streams
 package gtrs
 
 import (
@@ -14,12 +15,6 @@ type Message[T any] struct {
 	Data   T
 }
 
-// IsLast returns true if the consumer closed after this message.
-func (msg Message[T]) IsLast() bool {
-	_, ok := msg.Err.(ReadError)
-	return ok
-}
-
 // fetchMessage is used for sending a redis.XMessage together with its corresponding stream.
 // Used in consumer fetchloops.
 type fetchMessage struct {
@@ -34,6 +29,8 @@ type innerAckError struct {
 }
 
 // ReadError indicates an erorr with the redis client.
+//
+// After a ReadError was returned from a consumer, it'll close its main channel.
 type ReadError struct {
 	Err error
 }
@@ -61,7 +58,7 @@ func (ae AckError) Error() string {
 
 // ParseError indicates an error during parsing.
 type ParseError struct {
-	Data map[string]interface{}
+	Data map[string]interface{} // raw data returned by the redis client
 	Err  error
 }
 
