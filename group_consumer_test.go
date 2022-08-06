@@ -24,7 +24,7 @@ func (sc simpleSyncMock) XReadGroup(ctx context.Context, a *redis.XReadGroupArgs
 	return redis.NewXStreamSliceCmdResult([]redis.XStream{{
 		Stream: "s1",
 		Messages: []redis.XMessage{
-			{ID: "0-1", Values: map[string]interface{}{"Name": "TestTown"}},
+			{ID: "0-1", Values: map[string]interface{}{"name": "TestTown"}},
 		},
 	}}, nil)
 }
@@ -65,7 +65,7 @@ func (sc switchToNewMock) XReadGroup(ctx context.Context, a *redis.XReadGroupArg
 		return redis.NewXStreamSliceCmdResult([]redis.XStream{{
 			Stream: "s1",
 			Messages: []redis.XMessage{
-				{ID: "1-1", Values: map[string]interface{}{"Name": "NewTown"}},
+				{ID: "1-1", Values: map[string]interface{}{"name": "NewTown"}},
 			},
 		}}, nil)
 	} else if a.Streams[1] == fmt.Sprintf("0-%v", sc.maxHandout) {
@@ -78,7 +78,7 @@ func (sc switchToNewMock) XReadGroup(ctx context.Context, a *redis.XReadGroupArg
 		return redis.NewXStreamSliceCmdResult([]redis.XStream{{
 			Stream: "s1",
 			Messages: []redis.XMessage{
-				{ID: fmt.Sprintf("0-%v", id+1), Values: map[string]interface{}{"Name": "OldTown"}},
+				{ID: fmt.Sprintf("0-%v", id+1), Values: map[string]interface{}{"name": "OldTown"}},
 			},
 		}}, nil)
 	}
@@ -129,7 +129,7 @@ func (sc *remainingAckMock) XReadGroup(ctx context.Context, a *redis.XReadGroupA
 	return redis.NewXStreamSliceCmdResult([]redis.XStream{{
 		Stream: "s1",
 		Messages: []redis.XMessage{
-			{ID: "0-1", Values: map[string]interface{}{"Name": "TestTown"}},
+			{ID: "0-1", Values: map[string]interface{}{"name": "TestTown"}},
 		},
 	}}, nil)
 }

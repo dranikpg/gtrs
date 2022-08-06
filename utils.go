@@ -2,9 +2,12 @@ package gtrs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
+	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/go-redis/redis/v8"
 )
@@ -62,10 +65,15 @@ func checkCancel(ctx context.Context) bool {
 type FieldParseError struct {
 	Field string
 	Value any
+	Cause error
 }
 
 func (fpe FieldParseError) Error() string {
-	return fmt.Sprintf("failed to parse field %v, got %v", fpe.Field, fpe.Value)
+	return fmt.Sprintf("failed to parse field %v, got %v, because %v", fpe.Field, fpe.Value, fpe.Cause)
+}
+
+func (fpe FieldParseError) Unwrap() error {
+	return fpe.Cause
 }
 
 // structToMap convert a struct to a map.
@@ -81,7 +89,7 @@ func structToMap(st any) map[string]any {
 	for i := 0; i < rv.NumField(); i++ {
 		fieldValue := rv.Field(i)
 		fieldType := rt.Field(i)
-		out[fieldType.Name] = fieldValue.Interface()
+		out[toSnakeCase(fieldType.Name)] = fieldValue.Interface()
 	}
 	return out
 }
@@ -97,46 +105,73 @@ func mapToStruct(st any, data map[string]any) error {
 		}
 	}
 
-	for k, v := range data {
-		field := rv.FieldByName(k)
-		if !field.IsValid() {
+	rt = rt.Elem()
+
+	for i := 0; i < rt.NumField(); i += 1 {
+		fieldRv := rv.Field(i)
+		fieldRt := rt.Field(i)
+
+		v, ok := data[toSnakeCase(fieldRt.Name)]
+		if !ok {
 			continue
 		}
+
+		// The redis client always sends strings.
 		stval, ok := v.(string)
 		if !ok {
 			continue
 		}
 
-		if val := valueFromString(field.Type().Kind(), stval); val != nil {
-			field.Set(reflect.ValueOf(val))
+		val, err := valueFromString(fieldRv.Type().Kind(), stval)
+		if err != nil {
+			return FieldParseError{Field: fieldRt.Name, Value: v, Cause: err}
 		} else {
-			return FieldParseError{Field: k, Value: v}
+			fieldRv.Set(reflect.ValueOf(val))
 		}
 	}
-
 	return nil
 }
 
 // Parse value from string
 // TODO: find a better solution. Maybe there is a library for this.
-func valueFromString(kd reflect.Kind, st string) any {
+func valueFromString(kd reflect.Kind, st string) (any, error) {
 	switch kd {
 	case reflect.String:
-		return st
+		return st, nil
+	case reflect.Bool:
+		return strconv.ParseBool(st)
 	case reflect.Int:
-		i, err := strconv.Atoi(st)
-		if err != nil {
-			return nil
-		}
-		return i
+		v, err := strconv.ParseInt(st, 10, 0)
+		return int(v), err
+	case reflect.Uint:
+		v, err := strconv.ParseUint(st, 10, 0)
+		return uint(v), err
+	case reflect.Int32:
+		v, err := strconv.ParseInt(st, 10, 32)
+		return int32(v), err
+	case reflect.Uint32:
+		v, err := strconv.ParseUint(st, 10, 32)
+		return uint32(v), err
+	case reflect.Int64:
+		return strconv.ParseInt(st, 10, 64)
+	case reflect.Uint64:
+		return strconv.ParseUint(st, 10, 64)
 	case reflect.Float32:
-		i, err := strconv.ParseFloat(st, 32)
-		if err != nil {
-			return nil
-		}
-		return float32(i)
+		v, err := strconv.ParseFloat(st, 32)
+		return float32(v), err
+	case reflect.Float64:
+		return strconv.ParseFloat(st, 64)
 	}
-	return nil
+	return nil, errors.New("unsupported field type")
+}
+
+var matchFirstCap = regexp.MustCompile("(.)([A-Z][a-z]+)")
+var matchAllCap = regexp.MustCompile("([a-z0-9])([A-Z])")
+
+func toSnakeCase(str string) string {
+	snake := matchFirstCap.ReplaceAllString(str, "${1}_${2}")
+	snake = matchAllCap.ReplaceAllString(snake, "${1}_${2}")
+	return strings.ToLower(snake)
 }
 
 // Get reflect type by generic type.

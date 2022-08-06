@@ -32,7 +32,7 @@ func TestConsumer_SimpleSync(t *testing.T) {
 			atomic.StoreInt32(&confim, 0) // clear confirm flag
 
 			atomic.AddInt32(&sent, 1)
-			ms.XAdd("s1", "*", []string{"Name", city.Name, "Size", fmt.Sprint(city.Size)})
+			ms.XAdd("s1", "*", []string{"name", city.Name, "size", fmt.Sprint(city.Size)})
 
 			for atomic.LoadInt32(&confim) == 0 {
 				continue // wait for confirm
@@ -44,7 +44,7 @@ func TestConsumer_SimpleSync(t *testing.T) {
 	for msg := range cs.Chan() {
 		assert.Nil(t, msg.Err)
 		assert.False(t, msg.IsLast())
-		assert.Equal(t, msg.Data, cities[i])
+		assert.Equal(t, cities[i], msg.Data)
 		assert.Equal(t, int32(i+1), atomic.LoadInt32(&sent))
 
 		atomic.StoreInt32(&confim, 1)
@@ -101,7 +101,7 @@ func TestConsuer_FieldParseError(t *testing.T) {
 		BufferSize: 0,
 	})
 
-	ms.XAdd("s1", "*", []string{"Name", "FAILFAIL"})
+	ms.XAdd("s1", "*", []string{"name", "FAILFAIL"})
 
 	msg := <-cs.Chan()
 	assert.NotNil(t, msg.Err)
@@ -110,7 +110,7 @@ func TestConsuer_FieldParseError(t *testing.T) {
 	assert.ErrorAs(t, msg.Err, &fpe)
 	assert.Equal(t, "Name", fpe.Field)
 	assert.Equal(t, "FAILFAIL", fpe.Value)
-	assert.ErrorIs(t, msg.Err, FieldParseError{Field: "Name", Value: "FAILFAIL"})
+	assert.NotNil(t, fpe.Cause)
 }
 
 func TestConsumer_Close(t *testing.T) {
@@ -139,7 +139,7 @@ func TestConsumer_CloseGetSeenIDs(t *testing.T) {
 	})
 
 	for i := 1; i <= readCount; i++ {
-		ms.XAdd("s1", fmt.Sprintf("0-%v", i), []string{"Name", "Town"})
+		ms.XAdd("s1", fmt.Sprintf("0-%v", i), []string{"name", "Town"})
 	}
 
 	for i := 1; i <= consumeCount; i++ {

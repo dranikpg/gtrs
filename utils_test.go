@@ -39,17 +39,17 @@ func TestUtils_convertStructToMap(t *testing.T) {
 	m1 := structToMap(p1)
 
 	assert.Equal(t, map[string]any{
-		"Name":   "Vlad",
-		"Age":    int(19),
-		"Height": float32(172),
+		"name":   "Vlad",
+		"age":    int(19),
+		"height": float32(172),
 	}, m1)
 }
 
 func TestUtils_convertMapToStruct(t *testing.T) {
 	m1 := map[string]any{
-		"Name":   "Vlad",
-		"Age":    "19",
-		"Height": "172",
+		"name":   "Vlad",
+		"age":    "19",
+		"height": "172",
 	}
 
 	var p1 Person

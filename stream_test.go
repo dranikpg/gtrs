@@ -35,7 +35,7 @@ func TestStream_RangeLenSimple(t *testing.T) {
 	stream := NewStream[Person](rdb, "s1")
 
 	// Add first entry.
-	ms.XAdd("s1", "0-1", []string{"Name", "First"})
+	ms.XAdd("s1", "0-1", []string{"name", "First"})
 
 	values, err := stream.Range(ctx, "-", "+")
 	assert.Nil(t, err)
@@ -47,7 +47,7 @@ func TestStream_RangeLenSimple(t *testing.T) {
 	assert.Equal(t, int64(1), len)
 
 	// Add second entry.
-	ms.XAdd("s1", "0-2", []string{"Name", "Second"})
+	ms.XAdd("s1", "0-2", []string{"name", "Second"})
 
 	values, err = stream.Range(ctx, "-", "+")
 	assert.Nil(t, err)
@@ -66,10 +66,10 @@ func TestStream_RangeInterval(t *testing.T) {
 
 	stream := NewStream[Person](rdb, "s1")
 
-	ms.XAdd("s1", "0-1", []string{"Name", "First"})
-	ms.XAdd("s1", "0-2", []string{"Name", "Second"})
-	ms.XAdd("s1", "0-3", []string{"Name", "Third"})
-	ms.XAdd("s1", "0-4", []string{"Name", "Fourth"})
+	ms.XAdd("s1", "0-1", []string{"name", "First"})
+	ms.XAdd("s1", "0-2", []string{"name", "Second"})
+	ms.XAdd("s1", "0-3", []string{"name", "Third"})
+	ms.XAdd("s1", "0-4", []string{"name", "Fourth"})
 
 	vals, err := stream.Range(ctx, "0-3", "+")
 	assert.Nil(t, err)
