@@ -31,7 +31,7 @@ func (sc simpleSyncMock) XReadGroup(ctx context.Context, a *redis.XReadGroupArgs
 
 func (sc *simpleSyncMock) XAck(ctx context.Context, stream, group string, ids ...string) *redis.IntCmd {
 	sc.acks += 1
-	return redis.NewIntCmd(ctx, 0)
+	return redis.NewIntResult(1, nil)
 }
 
 func TestGroupConsumer_SimpleSync(t *testing.T) {
@@ -85,7 +85,7 @@ func (sc switchToNewMock) XReadGroup(ctx context.Context, a *redis.XReadGroupArg
 }
 
 func (sc *switchToNewMock) XAck(ctx context.Context, stream, group string, ids ...string) *redis.IntCmd {
-	return redis.NewIntCmd(ctx, 0)
+	return redis.NewIntResult(1, nil)
 }
 
 func TestGroupConsumer_SwitchToNew(t *testing.T) {
@@ -121,7 +121,7 @@ func (sc *remainingAckMock) XAck(ctx context.Context, stream, group string, ids 
 		case <-ctx.Done():
 		case <-time.After(1000 * time.Second):
 		}
-		return redis.NewIntResult(0, errors.New("must cancel"))
+		return redis.NewIntResult(1, errors.New("must cancel"))
 	}
 }
 
@@ -139,17 +139,17 @@ func TestGroupConsumer_RemainingAck(t *testing.T) {
 
 	rdb := remainingAckMock{}
 	cs := NewGroupConsumer[City](context.TODO(), &rdb, "g1", "c1", "s1", "0-0", GroupConsumerConfig{
-		AckBufferSize: 100,
+		AckBufferSize: 101,
 	})
 
 	for i := 0; i < ackCount; i += 1 {
-		cs.Ack(Message[City]{ID: fmt.Sprintf("0-%v", i)})
+		assert.True(t, cs.Ack(Message[City]{ID: fmt.Sprintf("0-%v", i)}))
 	}
 
 	time.Sleep(50 * time.Millisecond)
 
 	rm := cs.CloseGetRemainingAcks()
 
-	// Neither ack request finished - expect as many as sent
+	// Neither ack request finished, and neither error was processed - expect as many as sent
 	assert.Len(t, rm, ackCount)
 }

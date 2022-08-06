@@ -17,6 +17,11 @@ func NewStream[T any](client redis.Cmdable, stream string) Stream[T] {
 	return Stream[T]{client: client, stream: stream}
 }
 
+// Key returns the redis stream.
+func (s Stream[T]) Key() string {
+	return s.stream
+}
+
 // Add a message to the stream. Calls XADD.
 func (s Stream[T]) Add(ctx context.Context, v T, idarg ...string) (string, error) {
 	id := ""

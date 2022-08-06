@@ -40,13 +40,13 @@ func toMessage[T any](rm redis.XMessage, stream string) Message[T] {
 }
 
 // sendCheckCancel sends a generic message without blocking cancellation.
-// returns true if cancelled.
+// returns false if message was not delivered.
 func sendCheckCancel[M any](ctx context.Context, ch chan M, m M) bool {
 	select {
 	case <-ctx.Done():
-		return true
-	case ch <- m:
 		return false
+	case ch <- m:
+		return true
 	}
 }
 
@@ -126,13 +126,13 @@ func valueFromString(kd reflect.Kind, st string) any {
 	case reflect.Int:
 		i, err := strconv.Atoi(st)
 		if err != nil {
-			return int(0)
+			return nil
 		}
 		return i
 	case reflect.Float32:
 		i, err := strconv.ParseFloat(st, 32)
 		if err != nil {
-			return float32(0)
+			return nil
 		}
 		return float32(i)
 	}

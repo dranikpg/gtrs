@@ -112,7 +112,7 @@ func (sc *SimpleConsumer[T]) fetchLoop() {
 
 		res, err := sc.read(fetchedIds, stBuf)
 		if err != nil {
-			sendCheckCancel(sc.ctx, sc.consumeChan, Message[T]{Err: ReadError{Err: err}})
+			sendCheckCancel(sc.ctx, sc.fetchErrChan, err)
 			return
 		}
 
@@ -149,7 +149,7 @@ func (sc *SimpleConsumer[T]) consumeLoop() {
 		}
 
 		// Send message to consumer.
-		if !sendCheckCancel(sc.ctx, sc.consumeChan, toMessage[T](msg.message, msg.stream)) {
+		if sendCheckCancel(sc.ctx, sc.consumeChan, toMessage[T](msg.message, msg.stream)) {
 			sc.seenIds[msg.stream] = msg.message.ID
 		}
 	}

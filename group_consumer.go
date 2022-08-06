@@ -2,9 +2,12 @@ package gtrs
 
 import (
 	"context"
+	"errors"
 
 	"github.com/go-redis/redis/v8"
 )
+
+var ErrAckBadRetVal = errors.New("XAck made no acknowledgement (zero return)")
 
 // GroupConsumerConfig provides basic configuration for GroupConsumer.
 type GroupConsumerConfig struct {
@@ -23,13 +26,15 @@ type GroupConsumer[T any] struct {
 	// The following might look like totally over engineered
 	// but is the minimal setup for seamless communication and
 	// control of three goroutines (fetch, ack, consume).
-	consumeChan   chan Message[T]     // the usual non-buffered out facing consume chan
-	fetchErrChan  chan error          // fetch errors
-	fetchChan     chan fetchMessage   // fetch results
-	ackErrChan    chan innerAckError  // ack errors
-	ackChan       chan string         // ack requests
-	ackBusyChan   chan struct{}       // block for waiting for ack to empty request ack chan
-	remainingAcks map[string]struct{} // failed acks
+	consumeChan  chan Message[T]    // the usual non-buffered out facing consume chan
+	fetchErrChan chan error         // fetch errors
+	fetchChan    chan fetchMessage  // fetch results
+	ackErrChan   chan innerAckError // ack errors
+	ackChan      chan string        // ack requests
+	ackBusyChan  chan struct{}      // block for waiting for ack to empty request ack chan
+	lostAcksChan chan string        // failed acks stuck in local variables on cancel
+
+	lostAcks []string
 
 	name   string
 	group  string
@@ -47,7 +52,7 @@ func NewGroupConsumer[T any](ctx context.Context, rdb redis.Cmdable, group, name
 			Count:      0,
 			BufferSize: 10,
 		},
-		AckBufferSize: 0,
+		AckBufferSize: 5,
 	}
 
 	if len(cfgs) > 0 {
@@ -57,21 +62,21 @@ func NewGroupConsumer[T any](ctx context.Context, rdb redis.Cmdable, group, name
 	ctx, closeFunc := context.WithCancel(ctx)
 
 	gc := &GroupConsumer[T]{
-		rdb:           rdb,
-		ctx:           ctx,
-		cfg:           cfg,
-		consumeChan:   make(chan Message[T]),
-		fetchErrChan:  make(chan error, 1),
-		fetchChan:     make(chan fetchMessage, cfg.BufferSize),
-		ackErrChan:    make(chan innerAckError, 1),
-		ackChan:       make(chan string, cfg.AckBufferSize),
-		ackBusyChan:   make(chan struct{}),
-		remainingAcks: make(map[string]struct{}),
-		name:          name,
-		group:         group,
-		stream:        stream,
-		seenId:        lastID,
-		closeFunc:     closeFunc,
+		rdb:          rdb,
+		ctx:          ctx,
+		cfg:          cfg,
+		consumeChan:  make(chan Message[T]),
+		fetchErrChan: make(chan error, 1),
+		fetchChan:    make(chan fetchMessage, cfg.BufferSize),
+		ackErrChan:   make(chan innerAckError, 1),
+		ackChan:      make(chan string, cfg.AckBufferSize),
+		ackBusyChan:  make(chan struct{}),
+		lostAcksChan: make(chan string, 3),
+		name:         name,
+		group:        group,
+		stream:       stream,
+		seenId:       lastID,
+		closeFunc:    closeFunc,
 	}
 
 	go gc.fetchLoop()
@@ -82,12 +87,13 @@ func NewGroupConsumer[T any](ctx context.Context, rdb redis.Cmdable, group, name
 }
 
 // Ack requests an asynchronous XAck acknowledgement call for the passed message.
-// This call blocks only if the inner ack buffer is full or errors are not processed.
+// Returns false if the consumer is closed and this request was not recorded.
 //
+// Ack blocks only if the inner ack buffer is full or errors are not processed.
 // If multiple ack requests fail, the consumer will wait for the errors to be processed
-// via Chan().
-func (gc *GroupConsumer[T]) Ack(msg Message[T]) {
-	gc.ackChan <- msg.ID
+// via Chan(). Its best to use ack only inside a consume loop.
+func (gc *GroupConsumer[T]) Ack(msg Message[T]) bool {
+	return sendCheckCancel(gc.ctx, gc.ackChan, msg.ID)
 }
 
 // AwaitAcks blocks until all so far requested ack requests are processed.
@@ -116,15 +122,11 @@ func (gc *GroupConsumer[T]) CloseGetRemainingAcks() []string {
 		gc.Close()
 	}
 
-	// Wait for close (or pause).
-	<-gc.ackBusyChan
-
-	out := make([]string, len(gc.remainingAcks))
-	var i = 0
-	for id := range gc.remainingAcks {
-		out[i] = id
+	// Wait for main consumer to close, as it calls recoverRemainingAcks
+	for range gc.consumeChan {
 	}
-	return out
+
+	return gc.lostAcks
 }
 
 // fetchLoop fills the fetchChan with new entries.
@@ -160,9 +162,36 @@ func (gc *GroupConsumer[T]) fetchLoop() {
 	}
 }
 
+// recoverRemainingAcks collects all remaining acks from channels to remainingAcks
+func (gc *GroupConsumer[T]) recoverRemainingAcks() {
+	defer close(gc.lostAcksChan)
+
+	// Wait for ackChan to close and consume it.
+	for id := range gc.ackChan {
+		gc.lostAcks = append(gc.lostAcks, id)
+	}
+
+	// Wait for ackErrChan to close and consume it.
+	for err := range gc.ackErrChan {
+		gc.lostAcks = append(gc.lostAcks, err.id)
+	}
+
+	// Empty lostAcksChan.
+	var more = true
+	for more {
+		select {
+		case id := <-gc.lostAcksChan:
+			gc.lostAcks = append(gc.lostAcks, id)
+		default:
+			more = false
+		}
+	}
+}
+
 // consumeLoop fills the consumeChan with new messages from all sources.
 func (gc *GroupConsumer[T]) consumeLoop() {
 	defer close(gc.consumeChan)
+	defer gc.recoverRemainingAcks()
 
 	var msg fetchMessage
 
@@ -181,12 +210,14 @@ func (gc *GroupConsumer[T]) consumeLoop() {
 			sendCheckCancel(gc.ctx, gc.consumeChan, Message[T]{Err: ReadError{Err: err}})
 			return
 		case err := <-gc.ackErrChan:
-			sendCheckCancel(gc.ctx, gc.consumeChan,
+			if !sendCheckCancel(gc.ctx, gc.consumeChan,
 				Message[T]{
 					ID: err.id, Stream: gc.stream,
 					Err: AckError{Err: err.cause},
 				},
-			)
+			) {
+				gc.lostAcksChan <- err.id
+			}
 			continue
 		case msg = <-gc.fetchChan:
 		}
@@ -197,24 +228,11 @@ func (gc *GroupConsumer[T]) consumeLoop() {
 	}
 }
 
-func (gc *GroupConsumer[T]) fillRemainingAcks() {
-	var more = true
-	for more {
-		select {
-		case id := <-gc.ackChan:
-			gc.remainingAcks[id] = struct{}{}
-		default:
-			more = false
-		}
-	}
-}
-
 // acknowledgeLoop send XAcks for ids received from ackChan.
 func (gc *GroupConsumer[T]) acknowledgeLoop() {
 	defer close(gc.ackErrChan)
 	defer close(gc.ackChan)
 	defer close(gc.ackBusyChan)
-	defer gc.fillRemainingAcks()
 
 	var msg string
 
@@ -244,18 +262,19 @@ func (gc *GroupConsumer[T]) acknowledgeLoop() {
 
 		err := gc.ack(msg)
 
-		if err != nil {
-			gc.remainingAcks[msg] = struct{}{}
-			sendCheckCancel(gc.ctx, gc.ackErrChan, innerAckError{id: msg, cause: err})
-		} else {
-			delete(gc.remainingAcks, msg)
+		// Failed to send ack error. Add to lostAcksChan
+		if err != nil && !sendCheckCancel(gc.ctx, gc.ackErrChan, innerAckError{id: msg, cause: err}) {
+			gc.lostAcksChan <- msg
 		}
 	}
 }
 
 // ack sends an XAck message.
 func (gc *GroupConsumer[T]) ack(id string) error {
-	_, err := gc.rdb.XAck(gc.ctx, gc.stream, gc.group, id).Result()
+	i, err := gc.rdb.XAck(gc.ctx, gc.stream, gc.group, id).Result()
+	if i == 0 {
+		return ErrAckBadRetVal
+	}
 	return err
 }
 
