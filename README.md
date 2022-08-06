@@ -1,6 +1,6 @@
 # Go Typed Redis Streams
 
-Effectively reading [Redis streams](https://redis.io/docs/manual/data-types/streams/) requires some boilerplate: counting ids, prefetching and buffering entries, asynchronously sending acknowledgements and parsing entries. What if it was just this?
+Effectively reading [Redis streams](https://redis.io/docs/manual/data-types/streams/) requires some boilerplate: counting ids, prefetching and buffering entries, asynchronously sending acknowledgements and parsing entries. What if it was just the following?
 
 ```go
 consumer := NewConsumer[MyType](...)
@@ -13,14 +13,14 @@ Wait...it is! 🔥
 
 ### Quickstart
 
-Define a type that represents your stream data. 
-It'll be parsed automatically. You can also use [ConvertibleFrom]() and [ConvertibleTo]() to do custom parsing.
+Define a type that represents your stream data. It'll be parsed automatically with all field names converted to snake case. You can also use [ConvertibleFrom]() and [ConvertibleTo]() to do custom parsing.
 
 ```go
 type Event struct {
   Name     string
   Priority int
 }
+// maps to {"name": , "priority": }
 ```
 
 #### Consumers
@@ -76,9 +76,11 @@ seen := cs.CloseGetSeenIds()
 
 #### Group Consumers
 
-Group consumers work like regular consumers. They also allow sending acknowledgements, which are processed asynchronously.
+Group consumers work like regular consumers. They also allow sending acknowledgements, which are processed asynchronously. Make sure, the consumer group exists - the consumer won't create it for you.
 
 ```go
+rdb.XGroupCreateMkStream(ctx, "stream", "group", "0-0")
+
 cs := NewGroupConsumer[Event](ctx, rdb, "group", "consumer", "stream", ">")
 
 for msg := range cs.Chan() {
@@ -107,11 +109,27 @@ if _, ok := msg.Err.(AckError); ok {
 }
 ```
 
+#### Streams
+
+Streams are simple wrappers for basic redis commands on a stream.
+
+```go
+stream := NewStream[Event](rdb, "my-stream")
+stream.Add(ctx, Event{
+  Kind:     "Example event",
+  Priority: 1,
+}
+```
+
 ### Installation
 
 ```
 go get github.com/dranikpg/gtrs
 ```
+
+### Examples
+
+* [This is a small example]() for reading from three consumers in parallel and handling all types of errors.
 
 ### Performance
 
@@ -119,4 +137,4 @@ go get github.com/dranikpg/gtrs
 go test -run ^$ -bench BenchmarkConsumer -cpu=1
 ```
 
-The iteration cost on a _mocked client_ is about 500-700 ns depending on buffer sizes, which gives it a **throughput of about 2 million entries a second**.
+The iteration cost on a _mocked client_ is about 500-700 ns depending on buffer sizes, which gives it a **throughput of about 2 million entries a second** 🚀.
