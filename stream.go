@@ -1,4 +1,4 @@
-package main
+package gtrs
 
 import (
 	"context"
@@ -17,6 +17,11 @@ func NewStream[T any](client redis.Cmdable, stream string) Stream[T] {
 	return Stream[T]{client: client, stream: stream}
 }
 
+// Key returns the redis stream key.
+func (s Stream[T]) Key() string {
+	return s.stream
+}
+
 // Add a message to the stream. Calls XADD.
 func (s Stream[T]) Add(ctx context.Context, v T, idarg ...string) (string, error) {
 	id := ""
@@ -31,7 +36,7 @@ func (s Stream[T]) Add(ctx context.Context, v T, idarg ...string) (string, error
 	}).Result()
 
 	if err != nil {
-		err = ClientError{clientError: err}
+		err = ReadError{Err: err}
 	}
 
 	return id, err
@@ -48,7 +53,7 @@ func (s Stream[T]) Range(ctx context.Context, from, to string, count ...int64) (
 	}
 
 	if err != nil {
-		return nil, ClientError{clientError: err}
+		return nil, ReadError{Err: err}
 	}
 
 	msgs := make([]Message[T], len(redisSlice))
@@ -62,7 +67,7 @@ func (s Stream[T]) Range(ctx context.Context, from, to string, count ...int64) (
 func (s Stream[T]) Len(ctx context.Context) (int64, error) {
 	_, err := s.client.XLen(ctx, s.stream).Result()
 	if err != nil {
-		err = ClientError{clientError: err}
+		err = ReadError{Err: err}
 	}
 	return int64(1), err
 }

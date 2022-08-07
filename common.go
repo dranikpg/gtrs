@@ -1,39 +1,71 @@
-package main
+// gtrs is a library for easily reading Redis streams
+package gtrs
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/go-redis/redis/v8"
+)
 
 // A generic message with an ID, stream, data and an optional error.
 type Message[T any] struct {
 	ID     string
 	Stream string
-	Error  error
+	Err    error
 	Data   T
 }
 
-// ClientError indicates an erorr with the redis client
-type ClientError struct {
-	clientError error
+// fetchMessage is used for sending a redis.XMessage together with its corresponding stream.
+// Used in consumer fetchloops.
+type fetchMessage struct {
+	stream  string
+	message redis.XMessage
 }
 
-func (ce ClientError) Unwrap() error {
-	return ce.clientError
+// innerAckError is sent by ackLoop and carries the id of the failed ack request and its cause.
+type innerAckError struct {
+	id    string
+	cause error
 }
 
-func (ce ClientError) Error() string {
-	return fmt.Sprintf("client error: %v", ce.clientError)
+// ReadError indicates an erorr with the redis client.
+//
+// After a ReadError was returned from a consumer, it'll close its main channel.
+type ReadError struct {
+	Err error
 }
 
-// ParsingError indicates an error during parsing
-type ParsingError struct {
-	ID    string
-	Data  map[string]interface{}
-	Inner error
+func (ce ReadError) Unwrap() error {
+	return ce.Err
 }
 
-func (pe ParsingError) Unwrap() error {
-	return pe.Inner
+func (ce ReadError) Error() string {
+	return fmt.Sprintf("read error: %v", ce.Err)
 }
 
-func (pe ParsingError) Error() string {
-	return fmt.Sprintf("parsing error: id %v, cause: %v", pe.ID, pe.Inner)
+// AckError indicates that an acknowledgement request failed.
+type AckError struct {
+	Err error
+}
+
+func (ae AckError) Unwrap() error {
+	return ae.Err
+}
+
+func (ae AckError) Error() string {
+	return fmt.Sprintf("acknowledge error: cause: %v", ae.Err)
+}
+
+// ParseError indicates an error during parsing.
+type ParseError struct {
+	Data map[string]interface{} // raw data returned by the redis client
+	Err  error
+}
+
+func (pe ParseError) Unwrap() error {
+	return pe.Err
+}
+
+func (pe ParseError) Error() string {
+	return fmt.Sprintf("parsing error: cause: %v", pe.Err)
 }

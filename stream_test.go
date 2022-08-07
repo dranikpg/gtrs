@@ -1,4 +1,4 @@
-package main
+package gtrs
 
 import (
 	"context"
@@ -11,7 +11,15 @@ import (
 
 // startMiniredis starts a new miniredis instance and returns it with a fresh client.
 func startMiniredis(t *testing.T) (*miniredis.Miniredis, redis.Cmdable) {
-	s := miniredis.RunT(t)
+	var s *miniredis.Miniredis
+	if t != nil {
+		s = miniredis.RunT(t)
+	} else {
+		var err error
+		if s, err = miniredis.Run(); err != nil {
+			panic(err)
+		}
+	}
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     s.Addr(),
 		Password: "", // no password set
@@ -26,8 +34,11 @@ func TestStream_RangeLenSimple(t *testing.T) {
 
 	stream := NewStream[Person](rdb, "s1")
 
+	// Just a check for codecov :)
+	assert.Equal(t, "s1", stream.Key())
+
 	// Add first entry.
-	ms.XAdd("s1", "0-1", []string{"Name", "First"})
+	ms.XAdd("s1", "0-1", []string{"name", "First"})
 
 	values, err := stream.Range(ctx, "-", "+")
 	assert.Nil(t, err)
@@ -39,7 +50,7 @@ func TestStream_RangeLenSimple(t *testing.T) {
 	assert.Equal(t, int64(1), len)
 
 	// Add second entry.
-	ms.XAdd("s1", "0-2", []string{"Name", "Second"})
+	ms.XAdd("s1", "0-2", []string{"name", "Second"})
 
 	values, err = stream.Range(ctx, "-", "+")
 	assert.Nil(t, err)
@@ -50,6 +61,16 @@ func TestStream_RangeLenSimple(t *testing.T) {
 	len, err = stream.Len(ctx)
 	assert.Nil(t, err)
 	assert.Equal(t, int64(2), len)
+
+	// Add third entry.
+	ms.XAdd("s1", "0-3", []string{"name", "Third"})
+
+	values, err = stream.Range(ctx, "-", "+", 2)
+	assert.Nil(t, err)
+	assert.Equal(t, []Message[Person]{
+		{ID: "0-1", Stream: "s1", Data: Person{Name: "First"}},
+		{ID: "0-2", Stream: "s1", Data: Person{Name: "Second"}},
+	}, values)
 }
 
 func TestStream_RangeInterval(t *testing.T) {
@@ -58,10 +79,10 @@ func TestStream_RangeInterval(t *testing.T) {
 
 	stream := NewStream[Person](rdb, "s1")
 
-	ms.XAdd("s1", "0-1", []string{"Name", "First"})
-	ms.XAdd("s1", "0-2", []string{"Name", "Second"})
-	ms.XAdd("s1", "0-3", []string{"Name", "Third"})
-	ms.XAdd("s1", "0-4", []string{"Name", "Fourth"})
+	ms.XAdd("s1", "0-1", []string{"name", "First"})
+	ms.XAdd("s1", "0-2", []string{"name", "Second"})
+	ms.XAdd("s1", "0-3", []string{"name", "Third"})
+	ms.XAdd("s1", "0-4", []string{"name", "Fourth"})
 
 	vals, err := stream.Range(ctx, "0-3", "+")
 	assert.Nil(t, err)
@@ -85,7 +106,7 @@ func TestStream_RangeInterval(t *testing.T) {
 
 	_, err = stream.Range(ctx, "??", "??")
 	assert.NotNil(t, err)
-	assert.IsType(t, ClientError{}, err)
+	assert.IsType(t, ReadError{}, err)
 }
 
 func TestStream_Add(t *testing.T) {
@@ -113,4 +134,25 @@ func TestStream_Add(t *testing.T) {
 	len, err = stream.Len(ctx)
 	assert.Nil(t, err)
 	assert.Equal(t, int64(2), len)
+}
+
+func TestStream_Error(t *testing.T) {
+	ms, rdb := startMiniredis(t)
+	ctx := context.TODO()
+
+	ms.Close()
+
+	stream := NewStream[Person](rdb, "s1")
+
+	_, err := stream.Range(ctx, "-", "+")
+	assert.NotNil(t, err)
+	assert.IsType(t, ReadError{}, err)
+
+	_, err = stream.Len(ctx)
+	assert.NotNil(t, err)
+	assert.IsType(t, ReadError{}, err)
+
+	_, err = stream.Add(ctx, Person{})
+	assert.NotNil(t, err)
+	assert.IsType(t, ReadError{}, err)
 }
