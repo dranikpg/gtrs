@@ -1,4 +1,5 @@
-// gtrs is a library for easily reading Redis streams
+// GTRS (Go Typed Redis Streams) is a library for easily reading Redis streams with or without consumer groups.
+// See https://github.com/dranikpg/gtrs for a quick tutorial.
 package gtrs
 
 import (
