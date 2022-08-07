@@ -65,9 +65,9 @@ func (s Stream[T]) Range(ctx context.Context, from, to string, count ...int64) (
 
 // Len returns the current stream length. Calls XLEN.
 func (s Stream[T]) Len(ctx context.Context) (int64, error) {
-	_, err := s.client.XLen(ctx, s.stream).Result()
+	len, err := s.client.XLen(ctx, s.stream).Result()
 	if err != nil {
 		err = ReadError{Err: err}
 	}
-	return int64(1), err
+	return len, err
 }
