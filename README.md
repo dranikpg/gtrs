@@ -1,5 +1,8 @@
 # Go Typed Redis Streams
 
+<a href="https://pkg.go.dev/github.com/dranikpg/gtrs"><img src="https://godoc.org/github.com/dranikpg/gtrs?status.svg" /></a>
+[![Go Report Card](https://goreportcard.com/badge/github.com/dranikpg/gtrs)](https://goreportcard.com/report/github.com/dranikpg/gtrs)
+
 Effectively reading [Redis streams](https://redis.io/docs/manual/data-types/streams/) requires some work: counting ids, prefetching and buffering, asynchronously sending acknowledgements and parsing entries. What if it was just the following?
 
 ```go
@@ -14,7 +17,7 @@ Wait...it is! 🔥
 
 ### Quickstart
 
-Define a type that represents your stream data. It'll be parsed automatically with all field names converted to snake case. Missing fields will be skipped silently. You can also use [ConvertibleFrom]() and [ConvertibleTo]() to do custom parsing.
+Define a type that represents your stream data. It'll be parsed automatically with all field names converted to snake case. Missing fields will be skipped silently. You can also use the `ConvertibleFrom` and `ConvertibleTo` interfaces to do custom parsing.
 
 ```go
 // maps to {"name": , "priority": }
@@ -26,7 +29,7 @@ type Event struct {
 
 #### Consumers
 
-Consumers allow reading redis streams through Go channels. Specify context, a [redis client](https://github.com/go-redis/redis) and where to start reading. Make sure to specify [custom options](), if you don't like the default ones or want optimal performance. New entries are fetched asynchronously to provide a fast flow 🏎️
+Consumers allow reading redis streams through Go channels. Specify context, a [redis client](https://github.com/go-redis/redis) and where to start reading. Make sure to specify `StreamConsumerConfig`, if you don't like the default ones or want optimal performance. New entries are fetched asynchronously to provide a fast flow 🚂
 
 ```go
 consumer := NewConsumer[Event](ctx, rdb, StreamIDs{"my-stream": "$"})
@@ -68,9 +71,9 @@ remaining := cs.Close()
 #### Error handling
 
 This is where the simplicity fades a litte, but only a little :) The channel provides not just values, but also errors. Those can be only of three types:
-- ReadError reports a failed XRead/XReadGroup request. Consumer will close the channel after this error
-- AckError reports a failed XAck request
-- ParseError speaks for itself
+- `ReadError` reports a failed XRead/XReadGroup request. Consumer will close the channel after this error
+- `AckError` reports a failed XAck request
+- `ParseError` speaks for itself
 
 Consumers don't send errors on cancellation and immediately close the channel.
 
@@ -89,7 +92,7 @@ case ParseError:
 ```
 
 All those types are wrapping errors. For example, `ParseError` can be unwrapped to:
-- Find out why the default parser failed (e.g. assigning string to int field)
+- Find out why the default parser failed via `FieldParseError` (e.g. assigning string to int field)
 - Catch custom errors from `ConvertibleFrom`
 
 ```go
@@ -123,7 +126,7 @@ Gtrs is still in its early stages and might change in further releases.
 
 ### Examples
 
-* [This is a small example]() for reading from three consumers in parallel and handling all types of errors.
+* [This is a small example](https://github.com/dranikpg/gtrs-test) for reading from three consumers in parallel and handling all types of errors.
 
 ### Performance
 
