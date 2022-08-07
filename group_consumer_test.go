@@ -219,26 +219,6 @@ func TestGroupConsumer_AckErrors(t *testing.T) {
 
 // TestGroupConsumer_AckErrorCancel
 
-type ackErrorCancelMock struct {
-	*redis.Client
-	groupCreateMock
-	i int
-}
-
-func (ae *ackErrorCancelMock) XAck(ctx context.Context, stream, group string, ids ...string) *redis.IntCmd {
-	return redis.NewIntResult(0, errors.New("must fail"))
-}
-
-func (ae *ackErrorCancelMock) XReadGroup(ctx context.Context, a *redis.XReadGroupArgs) *redis.XStreamSliceCmd {
-	defer func() { ae.i += 1 }()
-	return redis.NewXStreamSliceCmdResult([]redis.XStream{{
-		Stream: "s1",
-		Messages: []redis.XMessage{
-			{ID: fmt.Sprintf("0-%v", ae.i), Values: map[string]interface{}{"name": "TestTown"}},
-		},
-	}}, nil)
-}
-
 func TestGroupConsumer_AckErrorCancel(t *testing.T) {
 	var readCount = 100
 
