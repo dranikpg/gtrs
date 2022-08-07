@@ -1,11 +1,12 @@
 # Go Typed Redis Streams
 
-Effectively reading [Redis streams](https://redis.io/docs/manual/data-types/streams/) requires some boilerplate: counting ids, prefetching and buffering, asynchronously sending acknowledgements and parsing entries. What if it was just the following?
+Effectively reading [Redis streams](https://redis.io/docs/manual/data-types/streams/) requires some work: counting ids, prefetching and buffering, asynchronously sending acknowledgements and parsing entries. What if it was just the following?
 
 ```go
-consumer := NewConsumer[MyType](...)
+consumer := NewGroupConsumer[MyType](...)
 for msg := range consumer.Chan() {
-    // handle message
+  // Handle mssage
+  consumer.Ack(msg)
 }
 ```
 
@@ -25,7 +26,7 @@ type Event struct {
 
 #### Consumers
 
-Consumers allow reading redis streams through Go channels. Specify context, a [redis client](https://github.com/go-redis/redis) and where to start reading. Make sure to specify [custom options](), if you don't like the default ones (buffer sizes and blocking time).
+Consumers allow reading redis streams through Go channels. Specify context, a [redis client](https://github.com/go-redis/redis) and where to start reading. Make sure to specify [custom options](), if you don't like the default ones or want optimal performance. New entries are fetched asynchronously to provide a fast flow 🏎️
 
 ```go
 consumer := NewConsumer[Event](ctx, rdb, StreamIDs{"my-stream": "$"})
@@ -38,32 +39,30 @@ for msg := range cs.Chan() {
 }
 ```
 
-Don't forget to `Close()` the consumer. If you want to start reading again where you left off, you can save the last  StreamIDs.
+Don't forget to `Close()` the consumer. If you want to start reading again where you left off, you can save the last StreamIDs.
 ```go
-ids := cs.CloseGetSeenIds()
+ids := cs.Close()
 ```
 
 #### Group Consumers
 
-They work just like regular consumers and allow sending acknowledgements asynchronously.
+They work just like regular consumers and allow sending acknowledgements asynchronously. Beware to use `Ack` only if you keep processing new messages - that is inside a consuming loop or from another goroutine. Even though this introduces a two-sided depdendecy, the consumer is avoids deadlocks.
 
 ```go
 cs := NewGroupConsumer[Event](ctx, rdb, "group", "consumer", "stream", ">")
 
 for msg := range cs.Chan() {
-  if !cs.Ack(msg) { // blocks only if buffer is full
-    // oh no, the context was cancelled
-  }
+  cs.Ack(msg)
 }
 ```
 
-Of course we care about correctness. Not a single error will be lost 🔎
+Stopped processing? Check your errors 🔎
 ```go
 // Wait for all acknowledgements to complete
-cs.AwaitAcks()
+errors := cs.AwaitAcks()
 
-// Not sent yet or their errors were not consumed
-remaining := cs.CloseGetRemainingAcks()
+// Acknowledgements that were not sent yet or their errors were not consumed
+remaining := cs.Close()
 ```
 
 #### Error handling
@@ -111,7 +110,7 @@ stream := NewStream[Event](rdb, "my-stream")
 stream.Add(ctx, Event{
   Kind:     "Example event",
   Priority: 1,
-}
+})
 ```
 
 ### Installation
@@ -132,4 +131,4 @@ Gtrs is still in its early stages and might change in further releases.
 go test -run ^$ -bench BenchmarkConsumer -cpu=1
 ```
 
-The iteration cost on a _mocked client_ is about 500-700 ns depending on buffer sizes, which gives it a **throughput close to 2 million entries a second** 🚀.
+The iteration cost on a _mocked client_ is about 500-700 ns depending on buffer sizes, which gives it a **throughput close to 2 million entries a second** 🚀. Getting bad results? Make sure to set large buffer sizes in the options.

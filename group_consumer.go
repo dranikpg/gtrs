@@ -54,10 +54,10 @@ func NewGroupConsumer[T any](ctx context.Context, rdb redis.Cmdable, group, name
 	cfg := GroupConsumerConfig{
 		StreamConsumerConfig: StreamConsumerConfig{
 			Block:      0,
-			Count:      0,
-			BufferSize: 10,
+			Count:      100,
+			BufferSize: 20,
 		},
-		AckBufferSize: 5,
+		AckBufferSize: 10,
 	}
 
 	if len(cfgs) > 0 {
@@ -73,10 +73,10 @@ func NewGroupConsumer[T any](ctx context.Context, rdb redis.Cmdable, group, name
 		consumeChan:  make(chan Message[T]),
 		fetchErrChan: make(chan error, 1),
 		fetchChan:    make(chan fetchMessage, cfg.BufferSize),
-		ackErrChan:   make(chan innerAckError, 1),
+		ackErrChan:   make(chan innerAckError, 5),
 		ackChan:      make(chan string, cfg.AckBufferSize),
 		ackBusyChan:  make(chan struct{}),
-		lostAcksChan: make(chan string, 3),
+		lostAcksChan: make(chan string, 5),
 		name:         name,
 		group:        group,
 		stream:       stream,
@@ -91,24 +91,6 @@ func NewGroupConsumer[T any](ctx context.Context, rdb redis.Cmdable, group, name
 	return gc
 }
 
-// Ack requests an asynchronous XAck acknowledgement request for the passed message.
-// Returns false if the consumer is closed and this request was not recorded.
-//
-// Ack blocks only if the inner ack buffer is full or errors are not processed.
-// If multiple ack requests fail, the consumer will wait for the errors to be processed
-// via Chan(). Its best to use ack only inside a consume loop.
-func (gc *GroupConsumer[T]) Ack(msg Message[T]) bool {
-	return sendCheckCancel(gc.ctx, gc.ackChan, msg.ID)
-}
-
-// AwaitAcks blocks until all so far requested ack requests are processed.
-func (gc *GroupConsumer[T]) AwaitAcks() {
-	select {
-	case <-gc.ctx.Done():
-	case <-gc.ackBusyChan:
-	}
-}
-
 // Chan returns the main channel with new messages.
 //
 // This channel is closed when:
@@ -119,44 +101,145 @@ func (gc *GroupConsumer[T]) Chan() <-chan Message[T] {
 	return gc.consumeChan
 }
 
+// Ack requests an asynchronous XAck acknowledgement request for the passed message.
+//
+// NOTE: Ack sometimes provides backpressure, so it should be only used inside the consumer loop
+// or with another goroutine handling errors from the consumer channel. Otherwise it may deadlock.
+func (gc *GroupConsumer[T]) Ack(msg Message[T]) {
+	if !sendCheckCancel(gc.ctx, gc.ackChan, msg.ID) {
+		// the inner context in cancelled, so wait for ack recovery
+		for range gc.consumeChan {
+			panic("unreachable")
+		}
+		// just append it to the lost acks.
+		gc.lostAcks = append(gc.lostAcks, msg.ID)
+	}
+}
+
+// AwaitAcks blocks until all so far requested ack requests are processed
+// and returns a slice of Messages with AckErrors that happened during wait.
+func (gc *GroupConsumer[T]) AwaitAcks() []Message[T] {
+	var out []Message[T]
+
+	for {
+		select {
+		case <-gc.ctx.Done():
+			return out
+		case <-gc.ackBusyChan:
+			return out
+		case err := <-gc.ackErrChan:
+			out = append(out, ackErrToMessage[T](err, gc.stream))
+		}
+	}
+}
+
 // CloseGetRemainingAcks closes the consumer (if not already closed) and returns
 // a slice of unprocessed ack requests. An ack request in unprocessed if it
 // wasn't sent or its error wasn't consumed.
-func (gc *GroupConsumer[T]) CloseGetRemainingAcks() []string {
+func (gc *GroupConsumer[T]) Close() []string {
 	select {
 	case <-gc.ctx.Done():
 	default:
-		gc.Close()
+		gc.closeFunc()
 	}
 
 	// Wait for main consumer to close, as it calls recoverRemainingAcks
 	for range gc.consumeChan {
+		panic("unreachable")
 	}
 
 	return gc.lostAcks
 }
 
-// createGroup creates a redis group
-func (gc *GroupConsumer[T]) createGroup() error {
-	createId := gc.seenId
-	if createId == ">" {
-		createId = "$"
+// consumeLoop fills the consumeChan with new messages from all sources.
+// It is the last goroutine to exit and does remaing ack message recovery.
+func (gc *GroupConsumer[T]) consumeLoop() {
+	defer close(gc.consumeChan)
+	defer gc.recoverRemainingAcks()
+
+	var msg fetchMessage
+
+	for {
+		// Explicit check for context cancellation.
+		// In case select chooses other channels over cancellation in a streak.
+		if checkCancel(gc.ctx) {
+			return
+		}
+
+		// Listen for fetch message, fetch error, acknowledge error or context cancellation.
+		select {
+		case <-gc.ctx.Done():
+			return
+		case err := <-gc.fetchErrChan:
+			sendCheckCancel(gc.ctx, gc.consumeChan, Message[T]{Err: ReadError{Err: err}})
+			return
+		case err := <-gc.ackErrChan:
+			if !sendCheckCancel(gc.ctx, gc.consumeChan, ackErrToMessage[T](err, gc.stream)) {
+				gc.lostAcksChan <- err.id
+			}
+			continue
+		case msg = <-gc.fetchChan:
+		}
+
+		// Eager consume ack messages to keep buffer free and avoid deadlock
+		gc.eagerAckErrorDrain()
+
+		// Send message.
+		sendCheckCancel(gc.ctx, gc.consumeChan, toMessage[T](msg.message, msg.stream))
 	}
-	_, err := gc.rdb.XGroupCreateMkStream(gc.ctx, gc.stream, gc.group, createId).Result()
-	// BUSYGROUP means the group already exists.
-	if err != nil && !strings.Contains(err.Error(), "BUSYGROUP") {
-		return err
-	}
-	return nil
 }
 
-// fetchLoop fills the fetchChan with new entries.
+// acknowledgeLoop send XAcks for ids received from ackChan.
+func (gc *GroupConsumer[T]) acknowledgeLoop() {
+	defer close(gc.ackErrChan)
+	defer close(gc.ackChan)
+	defer close(gc.ackBusyChan)
+
+	var msg string
+
+	for {
+		// Explicit cancellation check
+		if checkCancel(gc.ctx) {
+			return
+		}
+
+		// The following construct:
+		// A. takes a message from ackChan if one is available
+		// B. blocks on ackBusyChan and ackChan. Only in this case
+		// the ack worker is "not busy" and can answer `AwaitAcks` requests.
+
+		select {
+		case <-gc.ctx.Done():
+			return
+		case msg = <-gc.ackChan:
+		default:
+			select {
+			case <-gc.ctx.Done():
+				return
+			case gc.ackBusyChan <- struct{}{}:
+				continue
+			case msg = <-gc.ackChan:
+			}
+		}
+
+		err := gc.ack(msg)
+
+		// Failed to send ack error. Add to lostAcksChan
+		if err != nil && !sendCheckCancel(gc.ctx, gc.ackErrChan, innerAckError{id: msg, cause: err}) {
+			gc.lostAcksChan <- msg
+		}
+	}
+}
+
+// fetchLoop fills the fetchChan with new entries from redis.
 func (gc *GroupConsumer[T]) fetchLoop() {
 	defer close(gc.fetchErrChan)
 	defer close(gc.fetchChan)
 
 	if err := gc.createGroup(); err != nil {
 		gc.fetchErrChan <- err
+		// Don't close channels preemptively
+		<-gc.ctx.Done()
 		return
 	}
 
@@ -165,6 +248,7 @@ func (gc *GroupConsumer[T]) fetchLoop() {
 
 		if err != nil {
 			gc.fetchErrChan <- err
+			<-gc.ctx.Done()
 			return
 		}
 
@@ -187,6 +271,20 @@ func (gc *GroupConsumer[T]) fetchLoop() {
 			}
 		}
 	}
+}
+
+// createGroup creates a redis group, silently skips error if it exists already
+func (gc *GroupConsumer[T]) createGroup() error {
+	createId := gc.seenId
+	if createId == ">" {
+		createId = "$"
+	}
+	_, err := gc.rdb.XGroupCreateMkStream(gc.ctx, gc.stream, gc.group, createId).Result()
+	// BUSYGROUP means the group already exists.
+	if err != nil && !strings.Contains(err.Error(), "BUSYGROUP") {
+		return err
+	}
+	return nil
 }
 
 // recoverRemainingAcks collects all remaining acks from channels to remainingAcks
@@ -219,83 +317,20 @@ func (gc *GroupConsumer[T]) recoverRemainingAcks() {
 	}
 }
 
-// consumeLoop fills the consumeChan with new messages from all sources.
-func (gc *GroupConsumer[T]) consumeLoop() {
-	defer close(gc.consumeChan)
-	defer gc.recoverRemainingAcks()
-
-	var msg fetchMessage
-
-	for {
-		// Explicit check for context cancellation.
-		// In case select chooses other channels over cancellation in a streak.
-		if checkCancel(gc.ctx) {
-			return
-		}
-
-		// Listen for fetch message, fetch error, acknowledge error or context cancellation.
+// eagerAckErrorDrain drains the ackErrChan while it has available messages
+func (gc *GroupConsumer[T]) eagerAckErrorDrain() {
+	var more = true
+	for more {
 		select {
 		case <-gc.ctx.Done():
 			return
-		case err := <-gc.fetchErrChan:
-			sendCheckCancel(gc.ctx, gc.consumeChan, Message[T]{Err: ReadError{Err: err}})
-			return
-		case err := <-gc.ackErrChan:
-			if !sendCheckCancel(gc.ctx, gc.consumeChan,
-				Message[T]{
-					ID: err.id, Stream: gc.stream,
-					Err: AckError{Err: err.cause},
-				},
-			) {
+		case err, gm := <-gc.ackErrChan:
+			if gm && !sendCheckCancel(gc.ctx, gc.consumeChan, ackErrToMessage[T](err, gc.stream)) {
 				gc.lostAcksChan <- err.id
 			}
-			continue
-		case msg = <-gc.fetchChan:
-		}
-
-		// Send message.
-		sendCheckCancel(gc.ctx, gc.consumeChan, toMessage[T](msg.message, msg.stream))
-		gc.seenId = msg.message.ID
-	}
-}
-
-// acknowledgeLoop send XAcks for ids received from ackChan.
-func (gc *GroupConsumer[T]) acknowledgeLoop() {
-	defer close(gc.ackErrChan)
-	defer close(gc.ackChan)
-	defer close(gc.ackBusyChan)
-
-	var msg string
-
-	for {
-		// Explicit cancellation check
-		if checkCancel(gc.ctx) {
-			return
-		}
-
-		// The following construct:
-		// A. takes a message from ackChan if one is available
-		// B. blocks on ackBusyChan and ackChan. Only in this case
-		// the ack worker is "not busy" and can answer `AwaitAcks` requests.
-		select {
-		case <-gc.ctx.Done():
-			return
-		case msg = <-gc.ackChan:
+			more = gm
 		default:
-			select {
-			case <-gc.ctx.Done():
-				return
-			case gc.ackBusyChan <- struct{}{}:
-				continue
-			case msg = <-gc.ackChan:
-			}
-		}
-
-		err := gc.ack(msg)
-
-		// Failed to send ack error. Add to lostAcksChan
-		if err != nil && !sendCheckCancel(gc.ctx, gc.ackErrChan, innerAckError{id: msg, cause: err}) {
-			gc.lostAcksChan <- msg
+			more = false
 		}
 	}
 }
@@ -303,7 +338,7 @@ func (gc *GroupConsumer[T]) acknowledgeLoop() {
 // ack sends an XAck message.
 func (gc *GroupConsumer[T]) ack(id string) error {
 	i, err := gc.rdb.XAck(gc.ctx, gc.stream, gc.group, id).Result()
-	if i == 0 {
+	if err == nil && i == 0 {
 		return ErrAckBadRetVal
 	}
 	return err
@@ -319,9 +354,4 @@ func (gc *GroupConsumer[T]) read() ([]redis.XStream, error) {
 		Block:    gc.cfg.Block,
 	}).Result()
 
-}
-
-// Close stops the consumer and closes all channels.
-func (gc *GroupConsumer[T]) Close() {
-	gc.closeFunc()
 }

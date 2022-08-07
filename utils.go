@@ -22,6 +22,13 @@ type ConvertibleFrom interface {
 	FromMap(map[string]any) error
 }
 
+func ackErrToMessage[T any](err innerAckError, stream string) Message[T] {
+	return Message[T]{
+		ID: err.id, Stream: stream,
+		Err: AckError{Err: err.cause},
+	}
+}
+
 // Convert a redis.XMessage to a Message[T]
 func toMessage[T any](rm redis.XMessage, stream string) Message[T] {
 	var data T
@@ -45,11 +52,17 @@ func toMessage[T any](rm redis.XMessage, stream string) Message[T] {
 // sendCheckCancel sends a generic message without blocking cancellation.
 // returns false if message was not delivered.
 func sendCheckCancel[M any](ctx context.Context, ch chan M, m M) bool {
+	// We really NEVER want to sent after we're closed
 	select {
 	case <-ctx.Done():
 		return false
-	case ch <- m:
-		return true
+	default:
+		select {
+		case <-ctx.Done():
+			return false
+		case ch <- m:
+			return true
+		}
 	}
 }
 

@@ -34,6 +34,9 @@ func TestStream_RangeLenSimple(t *testing.T) {
 
 	stream := NewStream[Person](rdb, "s1")
 
+	// Just a check for codecov :)
+	assert.Equal(t, "s1", stream.Key())
+
 	// Add first entry.
 	ms.XAdd("s1", "0-1", []string{"name", "First"})
 
@@ -58,6 +61,16 @@ func TestStream_RangeLenSimple(t *testing.T) {
 	len, err = stream.Len(ctx)
 	assert.Nil(t, err)
 	assert.Equal(t, int64(2), len)
+
+	// Add third entry.
+	ms.XAdd("s1", "0-3", []string{"name", "Third"})
+
+	values, err = stream.Range(ctx, "-", "+", 2)
+	assert.Nil(t, err)
+	assert.Equal(t, []Message[Person]{
+		{ID: "0-1", Stream: "s1", Data: Person{Name: "First"}},
+		{ID: "0-2", Stream: "s1", Data: Person{Name: "Second"}},
+	}, values)
 }
 
 func TestStream_RangeInterval(t *testing.T) {
@@ -121,4 +134,25 @@ func TestStream_Add(t *testing.T) {
 	len, err = stream.Len(ctx)
 	assert.Nil(t, err)
 	assert.Equal(t, int64(2), len)
+}
+
+func TestStream_Error(t *testing.T) {
+	ms, rdb := startMiniredis(t)
+	ctx := context.TODO()
+
+	ms.Close()
+
+	stream := NewStream[Person](rdb, "s1")
+
+	_, err := stream.Range(ctx, "-", "+")
+	assert.NotNil(t, err)
+	assert.IsType(t, ReadError{}, err)
+
+	_, err = stream.Len(ctx)
+	assert.NotNil(t, err)
+	assert.IsType(t, ReadError{}, err)
+
+	_, err = stream.Add(ctx, Person{})
+	assert.NotNil(t, err)
+	assert.IsType(t, ReadError{}, err)
 }

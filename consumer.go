@@ -16,6 +16,7 @@ type Consumer[T any] interface {
 type StreamIDs = map[string]string
 
 // StreamConsumerConfig provides basic configuration for StreamConsumer.
+// It can be passed as the last argument to NewConsumer.
 type StreamConsumerConfig struct {
 	Block      time.Duration // milliseconds to block before timing out. 0 means infinite
 	Count      int64         // maximum number of entries per request. 0 means not limited
@@ -43,8 +44,8 @@ type StreamConsumer[T any] struct {
 func NewConsumer[T any](ctx context.Context, rdb redis.Cmdable, ids StreamIDs, cfgs ...StreamConsumerConfig) *StreamConsumer[T] {
 	cfg := StreamConsumerConfig{
 		Block:      0,
-		Count:      0,
-		BufferSize: 10,
+		Count:      100,
+		BufferSize: 50,
 	}
 
 	if len(cfgs) > 0 {
@@ -80,27 +81,20 @@ func (sc *StreamConsumer[T]) Chan() <-chan Message[T] {
 	return sc.consumeChan
 }
 
-// SeenIds returns a StreamIds that shows, up to which entry the streams were consumed.
+// Close returns a StreamIds that shows, up to which entry the streams were consumed.
 //
 // The StreamIds can be used to construct a new StreamConsumer that will
 // pick up where this left off.
-func (sc *StreamConsumer[T]) CloseGetSeenIds() StreamIDs {
+func (sc *StreamConsumer[T]) Close() StreamIDs {
 	select {
 	case <-sc.ctx.Done():
 	default:
-		sc.Close()
+		sc.closeFunc()
 	}
 
 	// Await close.
 	<-sc.consumeChan
-
-	//e.g. return last seen ids
 	return sc.seenIds
-}
-
-// Close stops the consumer and closes all channels.
-func (sc *StreamConsumer[T]) Close() {
-	sc.closeFunc()
 }
 
 // fetchLoop fills the fetchChan with new stream messages.
@@ -121,6 +115,8 @@ func (sc *StreamConsumer[T]) fetchLoop() {
 		res, err := sc.read(fetchedIds, stBuf)
 		if err != nil {
 			sendCheckCancel(sc.ctx, sc.fetchErrChan, err)
+			// Don't close channels preemptively
+			<-sc.ctx.Done()
 			return
 		}
 

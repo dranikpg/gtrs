@@ -143,7 +143,36 @@ func TestConsumer_CloseGetSeenIDs(t *testing.T) {
 		<-cs.Chan()
 	}
 
-	seen := cs.CloseGetSeenIds()
+	seen := cs.Close()
+	assert.Equal(t, fmt.Sprintf("0-%v", consumeCount), seen["s1"])
+}
+
+func TestConsumer_CancelContext(t *testing.T) {
+	var readCount = 100
+	var consumeCount = 75
+
+	ms, rdb := startMiniredis(t)
+	ctx, cancelFunc := context.WithCancel(context.TODO())
+	defer cancelFunc()
+	cs := NewConsumer[City](ctx, rdb, StreamIDs{"s1": "0-0"}, StreamConsumerConfig{
+		Block:      0,
+		Count:      0,
+		BufferSize: 0,
+	})
+
+	for i := 1; i <= readCount; i++ {
+		ms.XAdd("s1", fmt.Sprintf("0-%v", i), []string{"name", "Town"})
+	}
+
+	stopid := fmt.Sprintf("0-%v", consumeCount)
+	for msg := range cs.Chan() {
+		assert.Nil(t, msg.Err)
+		if msg.ID == stopid {
+			cancelFunc()
+		}
+	}
+
+	seen := cs.Close()
 	assert.Equal(t, fmt.Sprintf("0-%v", consumeCount), seen["s1"])
 }
 
