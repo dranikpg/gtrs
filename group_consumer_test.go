@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -26,10 +27,10 @@ func (gcm groupCreateMock) XGroupCreateMkStream(ctx context.Context, stream, gro
 type simpleSyncMock struct {
 	*redis.Client
 	groupCreateMock
-	acks int
+	acks int64
 }
 
-func (sc simpleSyncMock) XReadGroup(ctx context.Context, a *redis.XReadGroupArgs) *redis.XStreamSliceCmd {
+func (sc *simpleSyncMock) XReadGroup(ctx context.Context, a *redis.XReadGroupArgs) *redis.XStreamSliceCmd {
 	return redis.NewXStreamSliceCmdResult([]redis.XStream{{
 		Stream: "s1",
 		Messages: []redis.XMessage{
@@ -39,7 +40,7 @@ func (sc simpleSyncMock) XReadGroup(ctx context.Context, a *redis.XReadGroupArgs
 }
 
 func (sc *simpleSyncMock) XAck(ctx context.Context, stream, group string, ids ...string) *redis.IntCmd {
-	sc.acks += 1
+	atomic.AddInt64(&sc.acks, 1)
 	return redis.NewIntResult(1, nil)
 }
 
@@ -47,8 +48,8 @@ func TestGroupConsumer_SimpleSync(t *testing.T) {
 	rdb := simpleSyncMock{}
 	cs := NewGroupConsumer[City](context.TODO(), &rdb, "g1", "c1", "s1", ">")
 
-	var i = 0
-	var readCount = 100
+	var i int64 = 0
+	var readCount int64 = 100
 	for msg := range cs.Chan() {
 		assert.Nil(t, msg.Err)
 
