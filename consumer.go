@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/go-redis/redis/v9"
 )
 
 // Consumer is a generic consumer interface

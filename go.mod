@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/alicebob/miniredis/v2 v2.22.0
-	github.com/go-redis/redis/v8 v8.11.5
+	github.com/go-redis/redis/v9 v9.0.0-rc.1
 	github.com/stretchr/testify v1.8.0
 )
 
