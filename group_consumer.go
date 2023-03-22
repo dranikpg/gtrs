@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 )
 
 // ErrAckBadRetVal is caused by XACK not accepting an request by returning 0.
