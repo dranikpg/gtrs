@@ -2,19 +2,26 @@ package gtrs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
 
+// Metadata is a type that allows serialization of generic structured
+// metadata within the stream entries. Any value that can be serialized
+// to JSON can be inserted here.
+type Metadata map[string]any
+
 // ConvertibleTo is implemented by types that can convert themselves to a map.
 type ConvertibleTo interface {
-	ToMap() map[string]any
+	ToMap() (map[string]any, error)
 }
 
 // ConvertibleFrom is implemented by types that can load themselves from a map.
@@ -93,8 +100,22 @@ func (fpe FieldParseError) Unwrap() error {
 	return fpe.Err
 }
 
+type SerializeError struct {
+	Field string
+	Value any
+	Err   error
+}
+
+func (se SerializeError) Error() string {
+	return fmt.Sprintf("failed to serialize field %v with val %v, because %v", se.Field, se.Value, se.Err)
+}
+
+func (se SerializeError) Unwrap() error {
+	return se.Err
+}
+
 // structToMap convert a struct to a map.
-func structToMap(st any) map[string]any {
+func structToMap(st any) (map[string]any, error) {
 	if c, ok := st.(ConvertibleTo); ok {
 		return c.ToMap()
 	}
@@ -106,9 +127,26 @@ func structToMap(st any) map[string]any {
 	for i := 0; i < rv.NumField(); i++ {
 		fieldValue := rv.Field(i)
 		fieldType := rt.Field(i)
-		out[toSnakeCase(fieldType.Name)] = fieldValue.Interface()
+		switch v := fieldValue.Interface().(type) {
+		case time.Time:
+			out[toSnakeCase(fieldType.Name)] = v.Format(time.RFC3339Nano)
+		case time.Duration:
+			out[toSnakeCase(fieldType.Name)] = v.String()
+		case Metadata:
+			js, err := json.Marshal(v)
+			if err != nil {
+				return nil, SerializeError{
+					Field: fieldType.Name,
+					Value: fieldValue.Interface(),
+					Err:   err,
+				}
+			}
+			out[toSnakeCase(fieldType.Name)] = string(js)
+		default:
+			out[toSnakeCase(fieldType.Name)] = fieldValue.Interface()
+		}
 	}
-	return out
+	return out, nil
 }
 
 // mapToStruct tries to convert a map to a struct.
@@ -139,7 +177,7 @@ func mapToStruct(st any, data map[string]any) error {
 			continue
 		}
 
-		val, err := valueFromString(fieldRv.Type().Kind(), stval)
+		val, err := valueFromString(fieldRv, stval)
 		if err != nil {
 			return FieldParseError{Field: fieldRt.Name, Value: v, Err: err}
 		} else {
@@ -151,33 +189,41 @@ func mapToStruct(st any, data map[string]any) error {
 
 // Parse value from string
 // TODO: find a better solution. Maybe there is a library for this.
-func valueFromString(kd reflect.Kind, st string) (any, error) {
-	switch kd {
-	case reflect.String:
+func valueFromString(val reflect.Value, st string) (any, error) {
+	switch val.Interface().(type) {
+	case string:
 		return st, nil
-	case reflect.Bool:
+	case bool:
 		return strconv.ParseBool(st)
-	case reflect.Int:
+	case int:
 		v, err := strconv.ParseInt(st, 10, 0)
 		return int(v), err
-	case reflect.Uint:
+	case uint:
 		v, err := strconv.ParseUint(st, 10, 0)
 		return uint(v), err
-	case reflect.Int32:
+	case int32:
 		v, err := strconv.ParseInt(st, 10, 32)
 		return int32(v), err
-	case reflect.Uint32:
+	case uint32:
 		v, err := strconv.ParseUint(st, 10, 32)
 		return uint32(v), err
-	case reflect.Int64:
+	case int64:
 		return strconv.ParseInt(st, 10, 64)
-	case reflect.Uint64:
+	case uint64:
 		return strconv.ParseUint(st, 10, 64)
-	case reflect.Float32:
+	case float32:
 		v, err := strconv.ParseFloat(st, 32)
 		return float32(v), err
-	case reflect.Float64:
+	case float64:
 		return strconv.ParseFloat(st, 64)
+	case time.Time:
+		return time.Parse(time.RFC3339Nano, st)
+	case time.Duration:
+		return time.ParseDuration(st)
+	case Metadata:
+		m := Metadata{}
+		err := json.Unmarshal([]byte(st), &m)
+		return m, err
 	}
 	return nil, errors.New("unsupported field type")
 }
