@@ -3,7 +3,7 @@ package gtrs
 import (
 	"context"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 )
 
 // Stream represents a redis stream with messages of type T.

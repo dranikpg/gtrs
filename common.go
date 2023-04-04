@@ -5,7 +5,7 @@ package gtrs
 import (
 	"fmt"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 )
 
 // A generic message with an ID, stream, data and an optional error.
