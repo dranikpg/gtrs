@@ -117,6 +117,24 @@ stream.Add(ctx, Event{
 ```
 The Options.TTL parameter will evict stream entries after the specified duration has elapsed (or it can be set to `NoExpiration`).
 
+#### Metadata
+
+The package defines a Metadata type as:
+```
+type Metadata map[string]any
+```
+
+This allows serialization (and deserialization) of generic structured metadata within the stream entries.
+Any value that can be serialized to JSON can be inserted from a field of this type (it uses JSON marshaller under the hood).
+For example:
+```
+stream.Add(ctx, EventWithMetadata{
+  Kind:     "Example event",
+  Priority: 1,
+  Meta: Metadata{"string": "foobar", "float": float64(1234.5)},
+})
+```
+
 ### Installation
 
 ```
