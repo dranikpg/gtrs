@@ -3,6 +3,7 @@ package gtrs
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -36,7 +37,8 @@ func (nc *NonParsable) FromMap(map[string]any) error {
 
 func TestUtils_convertStructToMap_Simple(t *testing.T) {
 	p1 := Person{Name: "Vlad", Age: 19, Height: 172.0}
-	m1 := structToMap(p1)
+	m1, err := structToMap(p1)
+	assert.NoError(t, err)
 
 	assert.Equal(t, map[string]any{
 		"name":   "Vlad",
@@ -72,6 +74,9 @@ func TestUtils_convertMapToStruct_AllTypes(t *testing.T) {
 		F32 float32
 		F64 float64
 		N   int
+		D   time.Duration
+		T   time.Time
+		M   Metadata
 	}
 
 	m1 := map[string]any{
@@ -86,12 +91,15 @@ func TestUtils_convertMapToStruct_AllTypes(t *testing.T) {
 		"f32": "1",
 		"f64": "1",
 		"n":   123, // non string value
+		"d":   "3s",
+		"t":   "2023-03-29T15:25:47.089126Z",
+		"m":   `{"n":1234,"s":"string"}`,
 	}
 
 	var s1 AllTypes
 	err := mapToStruct(&s1, m1)
 	assert.Nil(t, err)
-	assert.Equal(t, AllTypes{
+	expected := AllTypes{
 		S:   "s",
 		I:   1,
 		U:   1,
@@ -102,7 +110,31 @@ func TestUtils_convertMapToStruct_AllTypes(t *testing.T) {
 		U64: 1,
 		F32: 1.0,
 		F64: 1.0,
-	}, s1)
+		D:   3 * time.Second,
+		T:   time.Date(2023, time.March, 29, 15, 25, 47, 89126000, time.UTC),
+		M:   Metadata{"s": "string", "n": float64(1234)},
+	}
+	assert.Equal(t, expected, s1)
+
+	// verify conversion in the other direction
+	m2, err := structToMap(expected)
+	assert.NoError(t, err)
+	assert.Equal(t, m2, map[string]any{
+		"s":   "s",
+		"i":   int(1),
+		"u":   uint(1),
+		"b":   true,
+		"i32": int32(1),
+		"u32": uint32(1),
+		"i64": int64(1),
+		"u64": uint64(1),
+		"f32": float32(1),
+		"f64": float64(1),
+		"n":   0,
+		"d":   "3s",
+		"t":   "2023-03-29T15:25:47.089126Z",
+		"m":   `{"n":1234,"s":"string"}`,
+	})
 }
 
 func TestUtils_convertMapToStruct_UnsupportedType(t *testing.T) {
