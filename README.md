@@ -116,7 +116,7 @@ stream.Add(ctx, Event{
 })
 ```
 The Options.TTL parameter will evict stream entries after the specified duration has elapsed (or it can be set to `NoExpiration`).
-The Options.MaxLen parameter will older stream entries to accommodate newer entries after the maximum number of entries is reached.
+The Options.MaxLen parameter will remove older stream entries to accommodate newer entries after the maximum number of entries is reached.
 
 #### Metadata
 
