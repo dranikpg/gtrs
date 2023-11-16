@@ -231,3 +231,59 @@ func TestStream_TTL(t *testing.T) {
 	assert.Equal(t, vals[0].Stream, "s1")
 	assert.Equal(t, vals[0].Data.Name, "Fourth")
 }
+
+func TestStream_MaxLen(t *testing.T) {
+	_, rdb := startMiniredis(t)
+	ctx := context.TODO()
+
+	streamSize := 5
+	numberOfMessages := 10
+
+	stream := NewStream[Person](rdb, "s1", &Options{MaxLen: int64(streamSize)})
+	message := Person{Name: "Gorilla"}
+
+	valuesCheck := func(index int, size int, vals []Message[Person]) {
+		// ensure number of messages is accurate
+		if index < streamSize {
+			assert.Len(t, vals, index+1)
+		} else {
+			assert.Len(t, vals, streamSize)
+		}
+
+		// ensure ordering is preserved
+		vMap := map[int]bool{}
+		prevNumber := -1
+		for _, val := range vals {
+			assert.Greater(t, val.Data.Age, prevNumber, "ordering not preserved")
+			prevNumber = val.Data.Age
+			vMap[prevNumber] = true
+		}
+
+		// ensure that the values we have are the same as what is expected
+		if index < size {
+			for i := 0; i <= index; i++ {
+				if _, ok := vMap[i]; !ok {
+					assert.Fail(t, "value missing", i)
+				}
+			}
+		} else {
+			for i := index - size; i < index; i++ {
+				if _, ok := vMap[i+1]; !ok {
+					assert.Fail(t, "value missing", i)
+				}
+			}
+		}
+	}
+
+	for i := 0; i < numberOfMessages; i++ {
+		message.Age = i
+
+		_, err := stream.Add(ctx, message)
+		assert.NoError(t, err)
+
+		vals, err := stream.Range(ctx, "-", "+")
+		assert.NoError(t, err)
+
+		valuesCheck(i, streamSize, vals)
+	}
+}

@@ -109,13 +109,14 @@ errors.Is(msg.Err, errMyTypeFailedToParse)
 Streams are simple wrappers for basic redis commands on a stream.
 
 ```go
-stream := NewStream[Event](rdb, "my-stream", &Options{TTL: time.Hour})
+stream := NewStream[Event](rdb, "my-stream", &Options{TTL: time.Hour, MaxLen: 1000})
 stream.Add(ctx, Event{
   Kind:     "Example event",
   Priority: 1,
 })
 ```
 The Options.TTL parameter will evict stream entries after the specified duration has elapsed (or it can be set to `NoExpiration`).
+The Options.MaxLen parameter will older stream entries to accommodate newer entries after the maximum number of entries is reached.
 
 #### Metadata
 
