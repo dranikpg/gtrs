@@ -9,6 +9,7 @@ import (
 )
 
 var NoExpiration = time.Duration(0)
+var NoMaxLen = int64(0)
 
 // now is defined here so it can be overridden in unit tests
 var now = time.Now
@@ -18,6 +19,8 @@ type Stream[T any] struct {
 	client redis.Cmdable
 	stream string
 	ttl    time.Duration
+	maxLen int64
+	approx bool
 }
 
 type Options struct {
@@ -26,16 +29,24 @@ type Options struct {
 	// The default is No Expiration.
 	// Note that TTL is performed when messages are Added, so Range requests won't clean up old messages.
 	TTL time.Duration
+	// MaxLen is an optional parameter to specify the maximum length of the stream.
+	MaxLen int64
+	// Approx causes MaxLen and TTL to be approximate instead of exact.
+	Approx bool
 }
 
 // Create a new stream with messages of type T.
 // Options are optional (the parameter can be nil to use defaults).
 func NewStream[T any](client redis.Cmdable, stream string, opt *Options) Stream[T] {
+	var approx bool
+	maxLen := NoMaxLen
 	ttl := NoExpiration
 	if opt != nil {
 		ttl = opt.TTL
+		maxLen = opt.MaxLen
+		approx = opt.Approx
 	}
-	return Stream[T]{client: client, stream: stream, ttl: ttl}
+	return Stream[T]{client: client, stream: stream, ttl: ttl, maxLen: maxLen, approx: approx}
 }
 
 // Key returns the redis stream key.
@@ -48,6 +59,10 @@ func (s Stream[T]) Add(ctx context.Context, v T, idarg ...string) (string, error
 	id := ""
 	if len(idarg) > 0 {
 		id = idarg[0]
+	}
+	var maxLen int64
+	if s.maxLen > NoMaxLen {
+		maxLen = s.maxLen
 	}
 	minID := ""
 	if s.ttl > NoExpiration {
@@ -64,6 +79,8 @@ func (s Stream[T]) Add(ctx context.Context, v T, idarg ...string) (string, error
 		Values: vals,
 		ID:     id,
 		MinID:  minID,
+		MaxLen: maxLen,
+		Approx: s.approx,
 	}).Result()
 
 	if err != nil {

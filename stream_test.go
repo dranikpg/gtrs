@@ -188,7 +188,7 @@ func TestStream_TTL(t *testing.T) {
 	ms.SetTime(ts)
 
 	ttl := 10 * time.Second
-	stream := NewStream[Person](rdb, "s1", &Options{ttl})
+	stream := NewStream[Person](rdb, "s1", &Options{TTL: ttl})
 	// Add first entry.
 	_, err := stream.Add(ctx, Person{Name: "First"})
 	assert.NoError(t, err)
