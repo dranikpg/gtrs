@@ -117,7 +117,7 @@ stream.Add(ctx, Event{
 ```
 The Options.TTL parameter will evict stream entries after the specified duration has elapsed (or it can be set to `NoExpiration`).
 The Options.MaxLen parameter will remove older stream entries to accommodate newer entries after the maximum number of entries is reached.
-The Options.Approx parameter provides better efficiency by providing almost exact trimming.
+The Options.Approx parameter provides better efficiency by using almost exact trimming.
 #### Metadata
 
 The package defines a Metadata type as:
