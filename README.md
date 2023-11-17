@@ -109,14 +109,15 @@ errors.Is(msg.Err, errMyTypeFailedToParse)
 Streams are simple wrappers for basic redis commands on a stream.
 
 ```go
-stream := NewStream[Event](rdb, "my-stream", &Options{TTL: time.Hour})
+stream := NewStream[Event](rdb, "my-stream", &Options{TTL: time.Hour, MaxLen: 1000, Approx: true})
 stream.Add(ctx, Event{
   Kind:     "Example event",
   Priority: 1,
 })
 ```
 The Options.TTL parameter will evict stream entries after the specified duration has elapsed (or it can be set to `NoExpiration`).
-
+The Options.MaxLen parameter will remove older stream entries to accommodate newer entries after the maximum number of entries is reached.
+The Options.Approx parameter provides better efficiency by using almost exact trimming.
 #### Metadata
 
 The package defines a Metadata type as:
