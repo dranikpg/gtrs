@@ -16,6 +16,12 @@ type Person struct {
 	Height float32
 }
 
+type TaggedPerson struct {
+	Name   string
+	Age    int
+	Height float32 `gtrs:"cm"`
+}
+
 type City struct {
 	Name string
 	Size int
@@ -47,6 +53,18 @@ func TestUtils_convertStructToMap_Simple(t *testing.T) {
 	}, m1)
 }
 
+func TestUtils_convertStructToMap_Tags(t *testing.T) {
+	p1 := TaggedPerson{Name: "Vlad", Age: 19, Height: 172.0}
+	m1, err := structToMap(p1)
+	assert.NoError(t, err)
+
+	assert.Equal(t, map[string]any{
+		"name": "Vlad",
+		"age":  int(19),
+		"cm":   float32(172),
+	}, m1)
+}
+
 func TestUtils_convertMapToStruct_Simple(t *testing.T) {
 	m1 := map[string]any{
 		"name":   "Vlad",
@@ -59,6 +77,20 @@ func TestUtils_convertMapToStruct_Simple(t *testing.T) {
 
 	assert.Nil(t, err)
 	assert.Equal(t, Person{Name: "Vlad", Age: 19, Height: 172.0}, p1)
+}
+
+func TestUtils_convertMapToStruct_Tags(t *testing.T) {
+	m1 := map[string]any{
+		"name": "Vlad",
+		"age":  "19",
+		"cm":   "172",
+	}
+
+	var p1 TaggedPerson
+	err := mapToStruct(&p1, m1)
+
+	assert.Nil(t, err)
+	assert.Equal(t, TaggedPerson{Name: "Vlad", Age: 19, Height: 172.0}, p1)
 }
 
 func TestUtils_convertMapToStruct_AllTypes(t *testing.T) {

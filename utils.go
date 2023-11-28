@@ -127,11 +127,13 @@ func structToMap(st any) (map[string]any, error) {
 	for i := 0; i < rv.NumField(); i++ {
 		fieldValue := rv.Field(i)
 		fieldType := rt.Field(i)
+		fieldName := getFieldNameFromType(fieldType)
+
 		switch v := fieldValue.Interface().(type) {
 		case time.Time:
-			out[toSnakeCase(fieldType.Name)] = v.Format(time.RFC3339Nano)
+			out[fieldName] = v.Format(time.RFC3339Nano)
 		case time.Duration:
-			out[toSnakeCase(fieldType.Name)] = v.String()
+			out[fieldName] = v.String()
 		case Metadata:
 			js, err := json.Marshal(v)
 			if err != nil {
@@ -141,9 +143,9 @@ func structToMap(st any) (map[string]any, error) {
 					Err:   err,
 				}
 			}
-			out[toSnakeCase(fieldType.Name)] = string(js)
+			out[fieldName] = string(js)
 		default:
-			out[toSnakeCase(fieldType.Name)] = fieldValue.Interface()
+			out[fieldName] = fieldValue.Interface()
 		}
 	}
 	return out, nil
@@ -165,8 +167,9 @@ func mapToStruct(st any, data map[string]any) error {
 	for i := 0; i < rt.NumField(); i += 1 {
 		fieldRv := rv.Field(i)
 		fieldRt := rt.Field(i)
+		fieldName := getFieldNameFromType(fieldRt)
 
-		v, ok := data[toSnakeCase(fieldRt.Name)]
+		v, ok := data[fieldName]
 		if !ok {
 			continue
 		}
@@ -185,6 +188,20 @@ func mapToStruct(st any, data map[string]any) error {
 		}
 	}
 	return nil
+}
+
+// getFieldNameFromType will either use the snake case of the field name, or the gtrs tag
+func getFieldNameFromType(fieldType reflect.StructField) string {
+	fieldTag := fieldType.Tag
+	gtrsTag := strings.TrimSpace(fieldTag.Get("gtrs"))
+	nameItem := strings.SplitN(gtrsTag, ",", 2)[0]
+	var fieldName string
+	if len(nameItem) > 0 {
+		fieldName = nameItem
+	} else {
+		fieldName = toSnakeCase(fieldType.Name)
+	}
+	return fieldName
 }
 
 // Parse value from string
