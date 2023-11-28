@@ -128,11 +128,25 @@ func structToMap(st any) (map[string]any, error) {
 	for i := 0; i < rv.NumField(); i++ {
 		fieldValue := rv.Field(i)
 		fieldType := rt.Field(i)
+
+		fieldTag := fieldType.Tag
+		tags, err := structtag.Parse(string(fieldTag))
+		if err != nil {
+			// failing to parse a struct tag means = tag is invalid = we should panic
+			panic(err)
+		}
+		var fieldName string
+		gtrsTag, err := tags.Get("gtrs")
+		if err == nil {
+			fieldName = gtrsTag.Name
+		} else {
+			fieldName = toSnakeCase(fieldType.Name)
+		}
 		switch v := fieldValue.Interface().(type) {
 		case time.Time:
-			out[toSnakeCase(fieldType.Name)] = v.Format(time.RFC3339Nano)
+			out[fieldName] = v.Format(time.RFC3339Nano)
 		case time.Duration:
-			out[toSnakeCase(fieldType.Name)] = v.String()
+			out[fieldName] = v.String()
 		case Metadata:
 			js, err := json.Marshal(v)
 			if err != nil {
@@ -142,9 +156,9 @@ func structToMap(st any) (map[string]any, error) {
 					Err:   err,
 				}
 			}
-			out[toSnakeCase(fieldType.Name)] = string(js)
+			out[fieldName] = string(js)
 		default:
-			out[toSnakeCase(fieldType.Name)] = fieldValue.Interface()
+			out[fieldName] = fieldValue.Interface()
 		}
 	}
 	return out, nil
