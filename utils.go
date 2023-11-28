@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fatih/structtag"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -166,7 +167,22 @@ func mapToStruct(st any, data map[string]any) error {
 		fieldRv := rv.Field(i)
 		fieldRt := rt.Field(i)
 
-		v, ok := data[toSnakeCase(fieldRt.Name)]
+		fieldTag := fieldRt.Tag
+		tags, err := structtag.Parse(string(fieldTag))
+		if err != nil {
+			// failing to parse a struct tag means = tag is invalid = we should panic
+			panic(err)
+		}
+
+		var fieldName string
+		gtrsTag, err := tags.Get("gtrs")
+		if err == nil {
+			fieldName = gtrsTag.Name
+		} else {
+			fieldName = toSnakeCase(fieldRt.Name)
+		}
+
+		v, ok := data[fieldName]
 		if !ok {
 			continue
 		}
