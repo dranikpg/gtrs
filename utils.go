@@ -31,7 +31,7 @@ type ConvertibleFrom interface {
 
 func ackErrToMessage[T any](err innerAckError, stream string) Message[T] {
 	return Message[T]{
-		ID: err.id, Stream: stream,
+		ID: err.ID, Stream: stream,
 		Err: AckError{Err: err.cause},
 	}
 }

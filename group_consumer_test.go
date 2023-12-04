@@ -46,7 +46,7 @@ func (sc *simpleSyncMock) XAck(ctx context.Context, stream, group string, ids ..
 
 func TestGroupConsumer_SimpleSync(t *testing.T) {
 	rdb := simpleSyncMock{}
-	cs := NewGroupConsumer[City](context.TODO(), &rdb, "g1", "c1", "s1", ">")
+	cs := NewGroupMultiStreamConsumer[City](context.TODO(), &rdb, "g1", "c1", map[string]string{"s1": ">"})
 
 	var i int64 = 0
 	var readCount int64 = 100
@@ -105,7 +105,7 @@ func TestGroupConsumer_SwitchToNew(t *testing.T) {
 	var readCount = 100
 	var maxHistory = 50
 	rdb := switchToNewMock{maxHandout: maxHistory}
-	cs := NewGroupConsumer[City](context.TODO(), &rdb, "g1", "c1", "s1", "0-0")
+	cs := NewGroupMultiStreamConsumer[City](context.TODO(), &rdb, "g1", "c1", map[string]string{"s1": "0-0"})
 
 	var i = 0
 	for msg := range cs.Chan() {
@@ -155,7 +155,7 @@ func TestGroupConsumer_RemainingAck(t *testing.T) {
 	var ackCount = 100
 
 	rdb := remainingAckMock{}
-	cs := NewGroupConsumer[City](context.TODO(), &rdb, "g1", "c1", "s1", "0-0", GroupConsumerConfig{
+	cs := NewGroupMultiStreamConsumer[City](context.TODO(), &rdb, "g1", "c1", map[string]string{"s1": "0-0"}, GroupConsumerConfig{
 		AckBufferSize: uint(ackCount) + 1,
 	})
 
@@ -196,7 +196,7 @@ func TestGroupConsumer_AckErrors(t *testing.T) {
 	var readCount = 5_000
 
 	rdb := ackErrorMock{}
-	cs := NewGroupConsumer[City](context.TODO(), &rdb, "g1", "c1", "s1", "0-0")
+	cs := NewGroupMultiStreamConsumer[City](context.TODO(), &rdb, "g1", "c1", map[string]string{"s1": "0-0"})
 
 	var ackErrors = 0
 	var seen = 0
@@ -225,7 +225,7 @@ func TestGroupConsumer_AckErrorCancel(t *testing.T) {
 
 	rdb := ackErrorMock{}
 	ctx, cancelFunc := context.WithCancel(context.TODO())
-	cs := NewGroupConsumer[City](ctx, &rdb, "g1", "c1", "s1", "0-0")
+	cs := NewGroupMultiStreamConsumer[City](ctx, &rdb, "g1", "c1", map[string]string{"s1": "0-0"})
 
 	var msgs []Message[City]
 	for msg := range cs.Chan() {
@@ -258,7 +258,7 @@ func (fcm failCreateMock) XGroupCreateMkStream(ctx context.Context, stream, grou
 
 func TestGroupConsumer_CreateError(t *testing.T) {
 	rdb := failCreateMock{}
-	cs := NewGroupConsumer[City](context.TODO(), &rdb, "g1", "c1", "s1", "0-0")
+	cs := NewGroupMultiStreamConsumer[City](context.TODO(), &rdb, "g1", "c1", map[string]string{"s1": "0-0"})
 
 	msg := <-cs.Chan()
 	assert.NotNil(t, msg.Err)
@@ -279,7 +279,7 @@ func (rem readErrorMock) XReadGroup(ctx context.Context, a *redis.XReadGroupArgs
 
 func TestGroupConsumer_ReadError(t *testing.T) {
 	rdb := readErrorMock{}
-	cs := NewGroupConsumer[City](context.TODO(), &rdb, "g1", "c1", "s1", "0-0")
+	cs := NewGroupMultiStreamConsumer[City](context.TODO(), &rdb, "g1", "c1", map[string]string{"s1": "0-0"})
 
 	msg := <-cs.Chan()
 	assert.NotNil(t, msg.Err)

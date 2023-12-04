@@ -25,8 +25,13 @@ type fetchMessage struct {
 
 // innerAckError is sent by ackLoop and carries the id of the failed ack request and its cause.
 type innerAckError struct {
-	id    string
+	InnerAck
 	cause error
+}
+
+type InnerAck struct {
+	ID     string
+	Stream string
 }
 
 // ReadError indicates an erorr with the redis client.
