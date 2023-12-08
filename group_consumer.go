@@ -102,6 +102,7 @@ func NewGroupMultiStreamConsumer[T any](ctx context.Context, rdb redis.Cmdable, 
 // - the consumer is closed
 // - immediately on context cancel
 // - in case of a ReadError
+// - in case Ack fail, AckError is return
 func (gc *GroupConsumer[T]) Chan() <-chan Message[T] {
 	return gc.consumeChan
 }
@@ -133,12 +134,12 @@ func (gc *GroupConsumer[T]) AwaitAcks() []Message[T] {
 		case <-gc.ackBusyChan:
 			return out
 		case err := <-gc.ackErrChan:
-			out = append(out, ackErrToMessage[T](err, gc.streams[err.ID]))
+			out = append(out, ackErrToMessage[T](err))
 		}
 	}
 }
 
-// CloseGetRemainingAcks closes the consumer (if not already closed) and returns
+// Close closes the consumer (if not already closed) and returns
 // a slice of unprocessed ack requests. An ack request in unprocessed if it
 // wasn't sent or its error wasn't consumed.
 func (gc *GroupConsumer[T]) Close() []InnerAck {
@@ -153,11 +154,6 @@ func (gc *GroupConsumer[T]) Close() []InnerAck {
 		panic("unreachable")
 	}
 
-	outputs := make([]string, len(gc.lostAcks))
-	for _, o := range gc.lostAcks {
-		outputs = append(outputs, o.ID)
-	}
-
 	return gc.lostAcks
 }
 
@@ -168,9 +164,6 @@ func (gc *GroupConsumer[T]) consumeLoop() {
 	defer gc.recoverRemainingAcks()
 
 	var msg fetchMessage
-
-	fetchedIds := copyMap(gc.streams)
-
 	for {
 		// Explicit check for context cancellation.
 		// In case select chooses other channels over cancellation in a streak.
@@ -186,9 +179,10 @@ func (gc *GroupConsumer[T]) consumeLoop() {
 			sendCheckCancel(gc.ctx, gc.consumeChan, Message[T]{Err: ReadError{Err: err}})
 			return
 		case err := <-gc.ackErrChan:
-			if !sendCheckCancel(gc.ctx, gc.consumeChan, ackErrToMessage[T](err, err.Stream)) {
+			if !sendCheckCancel(gc.ctx, gc.consumeChan, ackErrToMessage[T](err)) {
 				gc.lostAcksChan <- err.InnerAck
 			}
+
 			continue
 		case msg = <-gc.fetchChan:
 		}
@@ -198,7 +192,7 @@ func (gc *GroupConsumer[T]) consumeLoop() {
 
 		// Send message to consumer.
 		if sendCheckCancel(gc.ctx, gc.consumeChan, toMessage[T](msg.message, msg.stream)) {
-			fetchedIds[msg.stream] = msg.message.ID
+			gc.streams[msg.stream] = msg.message.ID
 		}
 	}
 }
@@ -239,9 +233,16 @@ func (gc *GroupConsumer[T]) acknowledgeLoop() {
 		err := gc.ack(msg)
 
 		// Failed to send ack error. Add to lostAcksChan
-		if err != nil && !sendCheckCancel(gc.ctx, gc.ackErrChan, innerAckError{InnerAck: msg, cause: err}) {
+		if err != nil && !sendCheckCancel(gc.ctx, gc.ackErrChan, innerAckError{
+			cause: err,
+			InnerAck: InnerAck{
+				ID:     msg.ID,
+				Stream: msg.Stream,
+			},
+		}) {
 			gc.lostAcksChan <- msg
 		}
+
 	}
 }
 
@@ -345,7 +346,7 @@ func (gc *GroupConsumer[T]) eagerAckErrorDrain(stream string) {
 		case <-gc.ctx.Done():
 			return
 		case err, gm := <-gc.ackErrChan:
-			if gm && !sendCheckCancel(gc.ctx, gc.consumeChan, ackErrToMessage[T](err, stream)) {
+			if gm && !sendCheckCancel(gc.ctx, gc.consumeChan, ackErrToMessage[T](err)) {
 				gc.lostAcksChan <- err.InnerAck
 			}
 			more = gm
