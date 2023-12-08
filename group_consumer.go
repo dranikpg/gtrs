@@ -188,7 +188,7 @@ func (gc *GroupConsumer[T]) consumeLoop() {
 		}
 
 		// Eager consume ack messages to keep buffer free and avoid deadlock
-		gc.eagerAckErrorDrain(msg.stream)
+		gc.eagerAckErrorDrain()
 
 		// Send message to consumer.
 		if sendCheckCancel(gc.ctx, gc.consumeChan, toMessage[T](msg.message, msg.stream)) {
@@ -339,7 +339,7 @@ func (gc *GroupConsumer[T]) recoverRemainingAcks() {
 }
 
 // eagerAckErrorDrain drains the ackErrChan while it has available messages
-func (gc *GroupConsumer[T]) eagerAckErrorDrain(stream string) {
+func (gc *GroupConsumer[T]) eagerAckErrorDrain() {
 	var more = true
 	for more {
 		select {
