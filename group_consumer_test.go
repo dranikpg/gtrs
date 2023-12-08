@@ -375,7 +375,6 @@ func TestGroupConsumer_ConcurrentRead(t *testing.T) {
 				cs.Ack(tmp)
 			} else if _, ok := tmp.Err.(AckError); ok {
 				msgError = append(msgError, tmp)
-				t.Log(tmp.Stream, tmp.ID, tmp.Err.Error())
 				continue
 			} else {
 				t.Errorf("error not found: %s", tmp.Err.Error())
