@@ -46,7 +46,7 @@ func (sc *simpleSyncMock) XAck(ctx context.Context, stream, group string, ids ..
 
 func TestGroupConsumer_SimpleSync(t *testing.T) {
 	rdb := simpleSyncMock{}
-	cs := NewGroupConsumer[City](context.TODO(), &rdb, "g1", "c1", "s1", ">")
+	cs := NewGroupMultiStreamConsumer[City](context.TODO(), &rdb, "g1", "c1", map[string]string{"s1": ">"})
 
 	var i int64 = 0
 	var readCount int64 = 100
@@ -105,7 +105,7 @@ func TestGroupConsumer_SwitchToNew(t *testing.T) {
 	var readCount = 100
 	var maxHistory = 50
 	rdb := switchToNewMock{maxHandout: maxHistory}
-	cs := NewGroupConsumer[City](context.TODO(), &rdb, "g1", "c1", "s1", "0-0")
+	cs := NewGroupMultiStreamConsumer[City](context.TODO(), &rdb, "g1", "c1", map[string]string{"s1": "0-0"})
 
 	var i = 0
 	for msg := range cs.Chan() {
@@ -123,7 +123,6 @@ func TestGroupConsumer_SwitchToNew(t *testing.T) {
 }
 
 // TestGroupConsumer_RemainingAck
-
 type remainingAckMock struct {
 	*redis.Client
 	groupCreateMock
@@ -155,7 +154,7 @@ func TestGroupConsumer_RemainingAck(t *testing.T) {
 	var ackCount = 100
 
 	rdb := remainingAckMock{}
-	cs := NewGroupConsumer[City](context.TODO(), &rdb, "g1", "c1", "s1", "0-0", GroupConsumerConfig{
+	cs := NewGroupMultiStreamConsumer[City](context.TODO(), &rdb, "g1", "c1", map[string]string{"s1": "0-0"}, GroupConsumerConfig{
 		AckBufferSize: uint(ackCount) + 1,
 	})
 
@@ -196,7 +195,7 @@ func TestGroupConsumer_AckErrors(t *testing.T) {
 	var readCount = 5_000
 
 	rdb := ackErrorMock{}
-	cs := NewGroupConsumer[City](context.TODO(), &rdb, "g1", "c1", "s1", "0-0")
+	cs := NewGroupMultiStreamConsumer[City](context.TODO(), &rdb, "g1", "c1", map[string]string{"s1": "0-0"})
 
 	var ackErrors = 0
 	var seen = 0
@@ -225,7 +224,7 @@ func TestGroupConsumer_AckErrorCancel(t *testing.T) {
 
 	rdb := ackErrorMock{}
 	ctx, cancelFunc := context.WithCancel(context.TODO())
-	cs := NewGroupConsumer[City](ctx, &rdb, "g1", "c1", "s1", "0-0")
+	cs := NewGroupMultiStreamConsumer[City](ctx, &rdb, "g1", "c1", map[string]string{"s1": "0-0"})
 
 	var msgs []Message[City]
 	for msg := range cs.Chan() {
@@ -258,7 +257,7 @@ func (fcm failCreateMock) XGroupCreateMkStream(ctx context.Context, stream, grou
 
 func TestGroupConsumer_CreateError(t *testing.T) {
 	rdb := failCreateMock{}
-	cs := NewGroupConsumer[City](context.TODO(), &rdb, "g1", "c1", "s1", "0-0")
+	cs := NewGroupMultiStreamConsumer[City](context.TODO(), &rdb, "g1", "c1", map[string]string{"s1": "0-0"})
 
 	msg := <-cs.Chan()
 	assert.NotNil(t, msg.Err)
@@ -279,11 +278,124 @@ func (rem readErrorMock) XReadGroup(ctx context.Context, a *redis.XReadGroupArgs
 
 func TestGroupConsumer_ReadError(t *testing.T) {
 	rdb := readErrorMock{}
-	cs := NewGroupConsumer[City](context.TODO(), &rdb, "g1", "c1", "s1", "0-0")
+	cs := NewGroupMultiStreamConsumer[City](context.TODO(), &rdb, "g1", "c1", map[string]string{"s1": "0-0"})
 
 	msg := <-cs.Chan()
 	assert.NotNil(t, msg.Err)
 	assert.NotNil(t, errors.Unwrap(msg.Err))
 	assert.IsType(t, ReadError{}, msg.Err)
 	assert.ErrorContains(t, msg.Err, "read error: test error")
+}
+
+// TestGroupConsumer_ConcurrentRead
+type readConcurentErrorMock struct {
+	groupCreateMock
+	*redis.Client
+	i int
+}
+
+func (rem *readConcurentErrorMock) XReadGroup(ctx context.Context, a *redis.XReadGroupArgs) *redis.XStreamSliceCmd {
+	defer func() { rem.i += 5 }()
+
+	var val = []redis.XStream{}
+
+	if rem.i <= 35 {
+		val = []redis.XStream{{
+			Stream: "s1",
+			Messages: []redis.XMessage{
+				{ID: fmt.Sprintf("0-%d", rem.i), Values: map[string]any{"name": "TestTown", "size": 1000}},
+				{ID: fmt.Sprintf("0-%d", rem.i+1), Values: map[string]any{"name": "TestTown", "size": 1000}},
+				{ID: fmt.Sprintf("0-%d", rem.i+2), Values: map[string]any{"name": "TestTown", "size": 1000}},
+				{ID: fmt.Sprintf("0-%d", rem.i+3), Values: map[string]any{"name": "TestTown", "size": 1000}},
+			},
+		}, {
+			Stream: "s2",
+			Messages: []redis.XMessage{
+				{ID: fmt.Sprintf("0-%d", rem.i), Values: map[string]any{"name": "TestTown", "size": 1000}},
+			},
+		}, {
+			Stream: "s3",
+			Messages: []redis.XMessage{
+				{ID: fmt.Sprintf("0-%d", rem.i), Values: map[string]any{"name": "TestTown", "size": 1000}},
+				{ID: fmt.Sprintf("0-%d", rem.i+1), Values: map[string]any{"name": "TestTown", "size": 1000}},
+			},
+		}}
+	}
+
+	if rem.i >= 40 && rem.i < 70 {
+		val = []redis.XStream{{
+			Stream: "s1",
+			Messages: []redis.XMessage{
+				{ID: fmt.Sprintf("0-%d", rem.i), Values: map[string]any{"name": "TestTown", "size": 1000}},
+			},
+		}, {
+			Stream: "s2",
+			Messages: []redis.XMessage{
+				{ID: fmt.Sprintf("0-%d", rem.i), Values: map[string]any{"name": "TestTown", "size": 1000}},
+				{ID: fmt.Sprintf("0-%d", rem.i+1), Values: map[string]any{"name": "TestTown", "size": 1000}},
+				{ID: fmt.Sprintf("0-%d", rem.i+2), Values: map[string]any{"name": "TestTown", "size": 1000}},
+			},
+		}, {
+			Stream: "s3",
+			Messages: []redis.XMessage{
+				{ID: fmt.Sprintf("0-%d", rem.i), Values: map[string]any{"name": "TestTown", "size": 1000}},
+			},
+		}}
+	}
+
+	return redis.NewXStreamSliceCmdResult(val, nil)
+}
+
+func (rem *readConcurentErrorMock) XAck(ctx context.Context, stream, group string, ids ...string) *redis.IntCmd {
+	if len(ids) > 0 {
+		i := -1
+
+		fmt.Sscanf(ids[0], "0-%d", &i)
+
+		if i != -1 && i%15 == 0 {
+			return redis.NewIntResult(0, errors.New("must fail by modulo"))
+		}
+	}
+	return redis.NewIntResult(1, nil)
+}
+
+func TestGroupConsumer_ConcurrentRead(t *testing.T) {
+	rdb := readConcurentErrorMock{}
+
+	cs := NewGroupMultiStreamConsumer[City](context.TODO(), &rdb, "g1", "c1", map[string]string{"s1": "0-0", "s2": "0-0", "s3": "0-0"})
+
+	msg := make([]Message[City], 0, 21)
+	msgError := make([]Message[City], 0, 21)
+	msgList := make([]Message[City], 0, 121)
+
+	for end := true; end; {
+		select {
+		case tmp := <-cs.Chan():
+			if tmp.Err == nil {
+				cs.Ack(tmp)
+			} else if _, ok := tmp.Err.(AckError); ok {
+				msgError = append(msgError, tmp)
+				continue
+			} else {
+				t.Errorf("error not found: %s", tmp.Err.Error())
+			}
+
+			msgList = append(msgList, tmp)
+			if len(msgList)%2 == 0 {
+				ml := cs.AwaitAcks()
+				if len(ml) > 0 {
+					msg = append(msg, ml...)
+				}
+			}
+
+		case <-time.Tick(750 * time.Millisecond):
+			msg = append(msg, cs.AwaitAcks()...)
+			end = false
+		}
+	}
+
+	assert.Greater(t, len(msgError), 1)
+	assert.Greater(t, len(msg), 1)
+	assert.Equal(t, len(msg)+len(msgError), 15)
+	assert.Equal(t, len(cs.Close())+len(msgList)+len(msg)+len(msgError), 101)
 }

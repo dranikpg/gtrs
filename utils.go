@@ -29,9 +29,9 @@ type ConvertibleFrom interface {
 	FromMap(map[string]any) error
 }
 
-func ackErrToMessage[T any](err innerAckError, stream string) Message[T] {
+func ackErrToMessage[T any](err innerAckError) Message[T] {
 	return Message[T]{
-		ID: err.id, Stream: stream,
+		ID: err.ID, Stream: err.Stream,
 		Err: AckError{Err: err.cause},
 	}
 }
