@@ -33,7 +33,7 @@ func TestStream_RangeLenSimple(t *testing.T) {
 	ms, rdb := startMiniredis(t)
 	ctx := context.TODO()
 
-	stream := NewStream[Person](rdb, "s1", nil)
+	stream := NewStream[person](rdb, "s1", nil)
 
 	// Just a check for codecov :)
 	assert.Equal(t, "s1", stream.Key())
@@ -43,8 +43,8 @@ func TestStream_RangeLenSimple(t *testing.T) {
 
 	values, err := stream.Range(ctx, "-", "+")
 	assert.Nil(t, err)
-	assert.Equal(t, []Message[Person]{
-		{ID: "0-1", Stream: "s1", Data: Person{Name: "First"}},
+	assert.Equal(t, []Message[person]{
+		{ID: "0-1", Stream: "s1", Data: person{Name: "First"}},
 	}, values)
 	len, err := stream.Len(ctx)
 	assert.Nil(t, err)
@@ -55,9 +55,9 @@ func TestStream_RangeLenSimple(t *testing.T) {
 
 	values, err = stream.Range(ctx, "-", "+")
 	assert.Nil(t, err)
-	assert.Equal(t, []Message[Person]{
-		{ID: "0-1", Stream: "s1", Data: Person{Name: "First"}},
-		{ID: "0-2", Stream: "s1", Data: Person{Name: "Second"}},
+	assert.Equal(t, []Message[person]{
+		{ID: "0-1", Stream: "s1", Data: person{Name: "First"}},
+		{ID: "0-2", Stream: "s1", Data: person{Name: "Second"}},
 	}, values)
 	len, err = stream.Len(ctx)
 	assert.Nil(t, err)
@@ -65,9 +65,9 @@ func TestStream_RangeLenSimple(t *testing.T) {
 
 	values, err = stream.RevRange(ctx, "+", "-")
 	assert.Nil(t, err)
-	assert.Equal(t, []Message[Person]{
-		{ID: "0-2", Stream: "s1", Data: Person{Name: "Second"}},
-		{ID: "0-1", Stream: "s1", Data: Person{Name: "First"}},
+	assert.Equal(t, []Message[person]{
+		{ID: "0-2", Stream: "s1", Data: person{Name: "Second"}},
+		{ID: "0-1", Stream: "s1", Data: person{Name: "First"}},
 	}, values)
 	len, err = stream.Len(ctx)
 	assert.Nil(t, err)
@@ -78,16 +78,16 @@ func TestStream_RangeLenSimple(t *testing.T) {
 
 	values, err = stream.Range(ctx, "-", "+", 2)
 	assert.Nil(t, err)
-	assert.Equal(t, []Message[Person]{
-		{ID: "0-1", Stream: "s1", Data: Person{Name: "First"}},
-		{ID: "0-2", Stream: "s1", Data: Person{Name: "Second"}},
+	assert.Equal(t, []Message[person]{
+		{ID: "0-1", Stream: "s1", Data: person{Name: "First"}},
+		{ID: "0-2", Stream: "s1", Data: person{Name: "Second"}},
 	}, values)
 
 	values, err = stream.RevRange(ctx, "+", "-", 2)
 	assert.Nil(t, err)
-	assert.Equal(t, []Message[Person]{
-		{ID: "0-3", Stream: "s1", Data: Person{Name: "Third"}},
-		{ID: "0-2", Stream: "s1", Data: Person{Name: "Second"}},
+	assert.Equal(t, []Message[person]{
+		{ID: "0-3", Stream: "s1", Data: person{Name: "Third"}},
+		{ID: "0-2", Stream: "s1", Data: person{Name: "Second"}},
 	}, values)
 }
 
@@ -95,7 +95,7 @@ func TestStream_RangeInterval(t *testing.T) {
 	ms, rdb := startMiniredis(t)
 	ctx := context.TODO()
 
-	stream := NewStream[Person](rdb, "s1", nil)
+	stream := NewStream[person](rdb, "s1", nil)
 
 	ms.XAdd("s1", "0-1", []string{"name", "First"})
 	ms.XAdd("s1", "0-2", []string{"name", "Second"})
@@ -104,22 +104,22 @@ func TestStream_RangeInterval(t *testing.T) {
 
 	vals, err := stream.Range(ctx, "0-3", "+")
 	assert.Nil(t, err)
-	assert.Equal(t, []Message[Person]{
-		{ID: "0-3", Stream: "s1", Data: Person{Name: "Third"}},
-		{ID: "0-4", Stream: "s1", Data: Person{Name: "Fourth"}},
+	assert.Equal(t, []Message[person]{
+		{ID: "0-3", Stream: "s1", Data: person{Name: "Third"}},
+		{ID: "0-4", Stream: "s1", Data: person{Name: "Fourth"}},
 	}, vals)
 
 	vals, err = stream.Range(ctx, "0-1", "0-2")
 	assert.Nil(t, err)
-	assert.Equal(t, []Message[Person]{
-		{ID: "0-1", Stream: "s1", Data: Person{Name: "First"}},
-		{ID: "0-2", Stream: "s1", Data: Person{Name: "Second"}},
+	assert.Equal(t, []Message[person]{
+		{ID: "0-1", Stream: "s1", Data: person{Name: "First"}},
+		{ID: "0-2", Stream: "s1", Data: person{Name: "Second"}},
 	}, vals)
 
 	vals, err = stream.Range(ctx, "-", "0-1")
 	assert.Nil(t, err)
-	assert.Equal(t, []Message[Person]{
-		{ID: "0-1", Stream: "s1", Data: Person{Name: "First"}},
+	assert.Equal(t, []Message[person]{
+		{ID: "0-1", Stream: "s1", Data: person{Name: "First"}},
 	}, vals)
 
 	_, err = stream.Range(ctx, "??", "??")
@@ -131,10 +131,10 @@ func TestStream_Add(t *testing.T) {
 	_, rdb := startMiniredis(t)
 	ctx := context.TODO()
 
-	stream := NewStream[Person](rdb, "s1", nil)
+	stream := NewStream[person](rdb, "s1", nil)
 
 	// Add first entry.
-	_, err := stream.Add(ctx, Person{Name: "First"}, "0-1")
+	_, err := stream.Add(ctx, person{Name: "First"}, "0-1")
 	assert.NoError(t, err)
 
 	len, err := stream.Len(ctx)
@@ -143,12 +143,12 @@ func TestStream_Add(t *testing.T) {
 
 	vals, err := stream.Range(ctx, "-", "+")
 	assert.Nil(t, err)
-	assert.Equal(t, []Message[Person]{
-		{ID: "0-1", Stream: "s1", Data: Person{Name: "First"}},
+	assert.Equal(t, []Message[person]{
+		{ID: "0-1", Stream: "s1", Data: person{Name: "First"}},
 	}, vals)
 
 	// Add second entry.
-	_, err = stream.Add(ctx, Person{Name: "Second"})
+	_, err = stream.Add(ctx, person{Name: "Second"})
 	assert.NoError(t, err)
 
 	len, err = stream.Len(ctx)
@@ -162,7 +162,7 @@ func TestStream_Error(t *testing.T) {
 
 	ms.Close()
 
-	stream := NewStream[Person](rdb, "s1", nil)
+	stream := NewStream[person](rdb, "s1", nil)
 
 	_, err := stream.Range(ctx, "-", "+")
 	assert.NotNil(t, err)
@@ -172,7 +172,7 @@ func TestStream_Error(t *testing.T) {
 	assert.NotNil(t, err)
 	assert.IsType(t, ReadError{}, err)
 
-	_, err = stream.Add(ctx, Person{})
+	_, err = stream.Add(ctx, person{})
 	assert.NotNil(t, err)
 	assert.IsType(t, ReadError{}, err)
 }
@@ -188,9 +188,9 @@ func TestStream_TTL(t *testing.T) {
 	ms.SetTime(ts)
 
 	ttl := 10 * time.Second
-	stream := NewStream[Person](rdb, "s1", &Options{TTL: ttl})
+	stream := NewStream[person](rdb, "s1", &Options{TTL: ttl})
 	// Add first entry.
-	_, err := stream.Add(ctx, Person{Name: "First"})
+	_, err := stream.Add(ctx, person{Name: "First"})
 	assert.NoError(t, err)
 	vals, err := stream.Range(ctx, "-", "+")
 	assert.NoError(t, err)
@@ -199,7 +199,7 @@ func TestStream_TTL(t *testing.T) {
 	// Wait a few seconds and add a second entry.
 	ts = ts.Add(2 * time.Second)
 	ms.SetTime(ts)
-	_, err = stream.Add(ctx, Person{Name: "Second"})
+	_, err = stream.Add(ctx, person{Name: "Second"})
 	assert.NoError(t, err)
 	vals, err = stream.Range(ctx, "-", "+")
 	assert.NoError(t, err)
@@ -208,7 +208,7 @@ func TestStream_TTL(t *testing.T) {
 	// Wait past the TTL and add a third entry.
 	ts = ts.Add(ttl)
 	ms.SetTime(ts)
-	_, err = stream.Add(ctx, Person{Name: "Third"})
+	_, err = stream.Add(ctx, person{Name: "Third"})
 	assert.NoError(t, err)
 
 	vals, err = stream.Range(ctx, "-", "+")
@@ -222,7 +222,7 @@ func TestStream_TTL(t *testing.T) {
 	// Wait longer and add a fourth entry.
 	ts = ts.Add(ttl + time.Millisecond)
 	ms.SetTime(ts)
-	_, err = stream.Add(ctx, Person{Name: "Fourth"})
+	_, err = stream.Add(ctx, person{Name: "Fourth"})
 	assert.NoError(t, err)
 
 	vals, err = stream.Range(ctx, "-", "+")
@@ -239,10 +239,10 @@ func TestStream_MaxLen(t *testing.T) {
 	streamSize := 5
 	numberOfMessages := 10
 
-	stream := NewStream[Person](rdb, "s1", &Options{MaxLen: int64(streamSize)})
-	message := Person{Name: "Gorilla"}
+	stream := NewStream[person](rdb, "s1", &Options{MaxLen: int64(streamSize)})
+	message := person{Name: "Gorilla"}
 
-	valuesCheck := func(index int, size int, vals []Message[Person]) {
+	valuesCheck := func(index int, size int, vals []Message[person]) {
 		// ensure number of messages is accurate
 		if index < streamSize {
 			assert.Len(t, vals, index+1)

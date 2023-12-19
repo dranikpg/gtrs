@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/dranikpg/gtrs/gtrsconvert"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -69,7 +70,7 @@ func (s Stream[T]) Add(ctx context.Context, v T, idarg ...string) (string, error
 		minID = strconv.Itoa(int(now().Add(-s.ttl).UnixMilli()))
 	}
 
-	vals, err := structToMap(v)
+	vals, err := gtrsconvert.StructToMap(v)
 	if err != nil {
 		return "", err
 	}

@@ -13,7 +13,7 @@ import (
 
 func TestConsumer_SimpleSync(t *testing.T) {
 	ms, rdb := startMiniredis(t)
-	cs := NewConsumer[City](context.TODO(), rdb, StreamIDs{"s1": "0-0"}, StreamConsumerConfig{
+	cs := NewConsumer[city](context.TODO(), rdb, StreamIDs{"s1": "0-0"}, StreamConsumerConfig{
 		Block:      0,
 		Count:      0,
 		BufferSize: 0,
@@ -21,9 +21,9 @@ func TestConsumer_SimpleSync(t *testing.T) {
 	var sent int32 = 0   // number of items sent
 	var confim int32 = 0 // confirm status of receiver
 
-	cities := make([]City, 100)
+	cities := make([]city, 100)
 	for i := 0; i < len(cities); i++ {
-		cities[i] = City{Name: fmt.Sprintf("City %v", i), Size: i}
+		cities[i] = city{Name: fmt.Sprintf("City %v", i), Size: i}
 	}
 
 	go func() {
@@ -56,7 +56,7 @@ func TestConsumer_SimpleSync(t *testing.T) {
 
 func TestConsumer_ClientError(t *testing.T) {
 	ms, rdb := startMiniredis(t)
-	cs := NewConsumer[City](context.TODO(), rdb, StreamIDs{"s1": "0-0"}, StreamConsumerConfig{
+	cs := NewConsumer[city](context.TODO(), rdb, StreamIDs{"s1": "0-0"}, StreamConsumerConfig{
 		Block:      0,
 		Count:      0,
 		BufferSize: 0,
@@ -71,7 +71,7 @@ func TestConsumer_ClientError(t *testing.T) {
 
 func TestConsumer_ParserError(t *testing.T) {
 	ms, rdb := startMiniredis(t)
-	cs := NewConsumer[NonParsable](context.TODO(), rdb, StreamIDs{"s1": "0-0"}, StreamConsumerConfig{
+	cs := NewConsumer[nonParsable](context.TODO(), rdb, StreamIDs{"s1": "0-0"}, StreamConsumerConfig{
 		Block:      0,
 		Count:      0,
 		BufferSize: 0,
@@ -112,7 +112,7 @@ func TestConsuer_FieldParseError(t *testing.T) {
 
 func TestConsumer_Close(t *testing.T) {
 	_, rdb := startMiniredis(t)
-	cs := NewConsumer[NonParsable](context.TODO(), rdb, StreamIDs{"s1": "0-0"}, StreamConsumerConfig{
+	cs := NewConsumer[nonParsable](context.TODO(), rdb, StreamIDs{"s1": "0-0"}, StreamConsumerConfig{
 		Block:      0,
 		Count:      0,
 		BufferSize: 0,
@@ -129,7 +129,7 @@ func TestConsumer_CloseGetSeenIDs(t *testing.T) {
 	var consumeCount = 75
 
 	ms, rdb := startMiniredis(t)
-	cs := NewConsumer[City](context.TODO(), rdb, StreamIDs{"s1": "0-0"}, StreamConsumerConfig{
+	cs := NewConsumer[city](context.TODO(), rdb, StreamIDs{"s1": "0-0"}, StreamConsumerConfig{
 		Block:      0,
 		Count:      0,
 		BufferSize: 0,
@@ -154,7 +154,7 @@ func TestConsumer_CancelContext(t *testing.T) {
 	ms, rdb := startMiniredis(t)
 	ctx, cancelFunc := context.WithCancel(context.TODO())
 	defer cancelFunc()
-	cs := NewConsumer[City](ctx, rdb, StreamIDs{"s1": "0-0"}, StreamConsumerConfig{
+	cs := NewConsumer[city](ctx, rdb, StreamIDs{"s1": "0-0"}, StreamConsumerConfig{
 		Block:      0,
 		Count:      0,
 		BufferSize: 0,
@@ -209,7 +209,7 @@ func BenchmarkConsumer(b *testing.B) {
 	for _, size := range []uint{0, 10, 100, 1000, 10000} {
 		b.Run(fmt.Sprintf("s-%v", size), func(b *testing.B) {
 			mock := benchmarkClientMock{msgs: msgbuf}
-			cs := NewConsumer[Empty](context.TODO(), mock, StreamIDs{"s1": "0-0"}, StreamConsumerConfig{
+			cs := NewConsumer[empty](context.TODO(), mock, StreamIDs{"s1": "0-0"}, StreamConsumerConfig{
 				Block:      0,
 				Count:      int64(len(msgbuf)),
 				BufferSize: size,

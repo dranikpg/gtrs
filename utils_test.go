@@ -5,39 +5,42 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dranikpg/gtrs/gtrsconvert"
 	"github.com/stretchr/testify/assert"
 )
 
 // Common types for tests
 
-type Person struct {
+type person struct {
 	Name   string
 	Age    int
 	Height float32
 }
 
-type City struct {
+type city struct {
 	Name string
 	Size int
 }
 
 // No-op parsing type
-type Empty struct {
+type empty struct {
 }
 
 // Always returns parsing error
-type NonParsable struct {
+type nonParsable struct {
 }
 
 var errNotParsable = errors.New("not parsable")
 
-func (nc *NonParsable) FromMap(map[string]any) error {
+func (nc *nonParsable) FromMap(map[string]any) error {
 	return errNotParsable
 }
 
+// Encodable
+
 func TestUtils_convertStructToMap_Simple(t *testing.T) {
-	p1 := Person{Name: "Vlad", Age: 19, Height: 172.0}
-	m1, err := structToMap(p1)
+	p1 := person{Name: "Vlad", Age: 19, Height: 172.0}
+	m1, err := gtrsconvert.StructToMap(p1)
 	assert.NoError(t, err)
 
 	assert.Equal(t, map[string]any{
@@ -54,11 +57,11 @@ func TestUtils_convertMapToStruct_Simple(t *testing.T) {
 		"height": "172",
 	}
 
-	var p1 Person
-	err := mapToStruct(&p1, m1)
+	var p1 person
+	err := gtrsconvert.MapToStruct(&p1, m1)
 
 	assert.Nil(t, err)
-	assert.Equal(t, Person{Name: "Vlad", Age: 19, Height: 172.0}, p1)
+	assert.Equal(t, person{Name: "Vlad", Age: 19, Height: 172.0}, p1)
 }
 
 func TestUtils_convertMapToStruct_AllTypes(t *testing.T) {
@@ -97,7 +100,7 @@ func TestUtils_convertMapToStruct_AllTypes(t *testing.T) {
 	}
 
 	var s1 AllTypes
-	err := mapToStruct(&s1, m1)
+	err := gtrsconvert.MapToStruct(&s1, m1)
 	assert.Nil(t, err)
 	expected := AllTypes{
 		S:   "s",
@@ -117,7 +120,7 @@ func TestUtils_convertMapToStruct_AllTypes(t *testing.T) {
 	assert.Equal(t, expected, s1)
 
 	// verify conversion in the other direction
-	m2, err := structToMap(expected)
+	m2, err := gtrsconvert.StructToMap(expected)
 	assert.NoError(t, err)
 	assert.Equal(t, m2, map[string]any{
 		"s":   "s",
@@ -142,7 +145,7 @@ func TestUtils_convertMapToStruct_UnsupportedType(t *testing.T) {
 		V any
 	}
 	var u Unsupported
-	err := mapToStruct(&u, map[string]any{
+	err := gtrsconvert.MapToStruct(&u, map[string]any{
 		"v": "123",
 	})
 	assert.NotNil(t, err)
@@ -159,7 +162,7 @@ func TestUtils_convertMapToStruct_SnakeCase(t *testing.T) {
 		OneMoreSecondName int
 	}
 	var v LongNames
-	err := mapToStruct(&v, map[string]any{
+	err := gtrsconvert.MapToStruct(&v, map[string]any{
 		"first_name":           "1",
 		"one_more_second_name": "2",
 	})
