@@ -29,9 +29,9 @@ func copyMap[K comparable, V any](in map[K]V) map[K]V {
 	return out
 }
 
-func ackErrToMessage[T any](err innerAckError, stream string) Message[T] {
+func ackErrToMessage[T any](err innerAckError) Message[T] {
 	return Message[T]{
-		ID: err.id, Stream: stream,
+		ID: err.ID, Stream: err.Stream,
 		Err: AckError{Err: err.cause},
 	}
 }

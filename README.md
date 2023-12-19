@@ -17,13 +17,14 @@ Wait...it is! 🔥
 
 ### Quickstart
 
-Define a type that represents your stream data. It'll be parsed automatically with all field names converted to snake case. Missing fields will be skipped silently. You can also use the `ConvertibleFrom` and `ConvertibleTo` interfaces to do custom parsing.
+Define a type that represents your stream data. It'll be parsed automatically with all field names converted to snake case. Missing fields will be skipped silently. You can also use the `ConvertibleFrom` and `ConvertibleTo` interfaces to do custom parsing. Struct tags can be used to rename fields.
 
 ```go
-// maps to {"name": , "priority": }
+// maps to {"name": , "priority": , "to":}
 type Event struct {
   Name     string
   Priority int
+  Target   string `gtrs:"to"`
 }
 ```
 

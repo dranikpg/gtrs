@@ -12,6 +12,12 @@ type person struct {
 	Height float32
 }
 
+type taggedPerson struct {
+	Name   string
+	Age    int
+	Height float32 `gtrs:"cm"`
+}
+
 type city struct {
 	Name string
 	Size int

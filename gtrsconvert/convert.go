@@ -56,7 +56,7 @@ func StructToMap(st any) (map[string]any, error) {
 	for i := 0; i < rv.NumField(); i++ {
 		fieldValue := rv.Field(i)
 		fieldType := rt.Field(i)
-		fieldName := toSnakeCase(fieldType.Name)
+		fieldName := getFieldNameFromType(fieldType)
 		switch v := fieldValue.Interface().(type) {
 		case time.Time:
 			out[fieldName] = v.Format(time.RFC3339Nano)
@@ -96,7 +96,7 @@ func MapToStruct(st any, data map[string]any) error {
 		fieldRv := rv.Field(i)
 		fieldRt := rt.Field(i)
 
-		v, ok := data[toSnakeCase(fieldRt.Name)]
+		v, ok := data[getFieldNameFromType(fieldRt)]
 		if !ok {
 			continue
 		}
@@ -117,7 +117,19 @@ func MapToStruct(st any, data map[string]any) error {
 	return nil
 }
 
-var textUnmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
+// getFieldNameFromType will either use the snake case of the field name, or the gtrs tag
+func getFieldNameFromType(fieldType reflect.StructField) string {
+	fieldTag := fieldType.Tag
+	gtrsTag := strings.TrimSpace(fieldTag.Get("gtrs"))
+	nameItem := strings.SplitN(gtrsTag, ",", 2)[0]
+	var fieldName string
+	if len(nameItem) > 0 {
+		fieldName = nameItem
+	} else {
+		fieldName = toSnakeCase(fieldType.Name)
+	}
+	return fieldName
+}
 
 // Parse value from string
 // TODO: find a better solution. Maybe there is a library for this.

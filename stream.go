@@ -36,7 +36,7 @@ type Options struct {
 	Approx bool
 }
 
-// Create a new stream with messages of type T.
+// NewStream create a new stream with messages of type T.
 // Options are optional (the parameter can be nil to use defaults).
 func NewStream[T any](client redis.Cmdable, stream string, opt *Options) Stream[T] {
 	var approx bool
