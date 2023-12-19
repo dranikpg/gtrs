@@ -13,19 +13,23 @@ import (
 type Metadata map[string]any
 
 func (m *Metadata) UnmarshalText(text []byte) error {
+	// create m if nil
 	if m == nil {
 		*m = Metadata{}
 	}
+	// cast the type so it unmarshals correctly
 	var am map[string]any = map[string]any(*m)
 	err := json.Unmarshal(text, &am)
 	if err != nil {
 		return err
 	}
+	// assign the value back
 	*m = (Metadata)(am)
 	return nil
 }
 
 func (m Metadata) MarshalText() (text []byte, err error) {
+	// converts type so it marshals correctly
 	return json.Marshal(map[string]any(m))
 }
 
@@ -54,6 +58,10 @@ func StructToMap(st any) (map[string]any, error) {
 		fieldType := rt.Field(i)
 		fieldName := toSnakeCase(fieldType.Name)
 		switch v := fieldValue.Interface().(type) {
+		case time.Time:
+			out[fieldName] = v.Format(time.RFC3339Nano)
+		case time.Duration:
+			out[fieldName] = v.String()
 		case encoding.TextMarshaler:
 			txt, err := v.MarshalText()
 			if err != nil {
@@ -64,10 +72,6 @@ func StructToMap(st any) (map[string]any, error) {
 				}
 			}
 			out[fieldName] = string(txt)
-		case time.Time:
-			out[fieldName] = v.Format(time.RFC3339Nano)
-		case time.Duration:
-			out[fieldName] = v.String()
 		default:
 			out[fieldName] = fieldValue.Interface()
 		}
@@ -121,8 +125,6 @@ func valueFromString(val reflect.Value, st string) (any, error) {
 	iface := val.Interface()
 
 	switch cast := iface.(type) {
-	case encoding.TextUnmarshaler:
-		return cast, cast.UnmarshalText([]byte(st))
 	case string:
 		return st, nil
 	case bool:
@@ -152,6 +154,8 @@ func valueFromString(val reflect.Value, st string) (any, error) {
 		return time.Parse(time.RFC3339Nano, st)
 	case time.Duration:
 		return time.ParseDuration(st)
+	case encoding.TextUnmarshaler:
+		return cast, cast.UnmarshalText([]byte(st))
 	default:
 		ifaceptr := val.Addr().Interface()
 		unMarshaler, ok := ifaceptr.(encoding.TextUnmarshaler)
