@@ -1,10 +1,16 @@
 package gtrsconvert
 
-import "encoding/json"
+import (
+	"encoding"
+	"encoding/json"
+)
 
 type Metadata map[string]any
 
-func (m *Metadata) UnmarshalText(text []byte) error {
+var _ encoding.BinaryMarshaler = (Metadata)(nil)
+var _ encoding.BinaryUnmarshaler = (*Metadata)(nil)
+
+func (m *Metadata) UnmarshalBinary(text []byte) error {
 	// create m if nil
 	if m == nil {
 		*m = Metadata{}
@@ -20,7 +26,7 @@ func (m *Metadata) UnmarshalText(text []byte) error {
 	return nil
 }
 
-func (m Metadata) MarshalText() (text []byte, err error) {
+func (m Metadata) MarshalBinary() (text []byte, err error) {
 	// converts type so it marshals correctly
 	return json.Marshal(map[string]any(m))
 }

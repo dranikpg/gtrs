@@ -32,12 +32,10 @@ func StructToMap(st any) (map[string]any, error) {
 		fieldType := rt.Field(i)
 		fieldName := getFieldNameFromType(fieldType)
 		switch v := fieldValue.Interface().(type) {
-		case time.Time:
-			out[fieldName] = v.Format(time.RFC3339Nano)
 		case time.Duration:
 			out[fieldName] = v.String()
-		case encoding.TextMarshaler:
-			txt, err := v.MarshalText()
+		case encoding.BinaryMarshaler:
+			txt, err := v.MarshalBinary()
 			if err != nil {
 				return nil, SerializeError{
 					Field: fieldType.Name,
@@ -122,17 +120,15 @@ func valueFromString(val reflect.Value, st string) (any, error) {
 		return float32(v), err
 	case float64:
 		return strconv.ParseFloat(st, 64)
-	case time.Time:
-		return time.Parse(time.RFC3339Nano, st)
 	case time.Duration:
 		return time.ParseDuration(st)
-	case encoding.TextUnmarshaler:
-		return cast, cast.UnmarshalText([]byte(st))
+	case encoding.BinaryUnmarshaler:
+		return cast, cast.UnmarshalBinary([]byte(st))
 	default:
 		ifaceptr := val.Addr().Interface()
-		unMarshaler, ok := ifaceptr.(encoding.TextUnmarshaler)
+		unMarshaler, ok := ifaceptr.(encoding.BinaryUnmarshaler)
 		if ok {
-			err := unMarshaler.UnmarshalText([]byte(st))
+			err := unMarshaler.UnmarshalBinary([]byte(st))
 			if err != nil {
 				return nil, err
 			}
