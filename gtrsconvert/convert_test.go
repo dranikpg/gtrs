@@ -45,12 +45,12 @@ type encodable struct {
 	Data int
 }
 
-func (e *encodable) UnmarshalText(text []byte) error {
+func (e *encodable) UnmarshalBinary(text []byte) error {
 	e.Data = 5
 	return nil
 }
 
-func (e encodable) MarshalText() (text []byte, err error) {
+func (e encodable) MarshalBinary() (text []byte, err error) {
 	return []byte("five"), nil
 }
 
@@ -120,7 +120,7 @@ func TestUtils_convertMapToStruct_AllTypes(t *testing.T) {
 		F64 float64
 		N   int
 		D   time.Duration
-		T   time.Time
+		T   gtrsconvert.AsciiTime
 		M   gtrsconvert.Metadata
 		E   encodable
 	}
@@ -158,7 +158,7 @@ func TestUtils_convertMapToStruct_AllTypes(t *testing.T) {
 		F32: 1.0,
 		F64: 1.0,
 		D:   3 * time.Second,
-		T:   time.Date(2023, time.March, 29, 15, 25, 47, 89126000, time.UTC),
+		T:   gtrsconvert.AsciiTime(time.Date(2023, time.March, 29, 15, 25, 47, 89126000, time.UTC)),
 		M:   gtrsconvert.Metadata{"s": "string", "n": float64(1234)},
 		E:   encodable{Data: 5},
 	}

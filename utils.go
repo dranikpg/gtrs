@@ -12,13 +12,19 @@ import (
 // to JSON can be inserted here.
 type Metadata = gtrsconvert.Metadata
 
+// AsciiTime is a type that wraps time.Time, however the (Un)[M/m]arshalbinary functions are overridden to marshal in the same format as Text
+type AsciiTime = gtrsconvert.AsciiTime
+
 // ConvertibleTo is implemented by types that can convert themselves to a map.
 type ConvertibleTo = gtrsconvert.ConvertibleTo
 
 // ConvertibleFrom is implemented by types that can load themselves from a map.
 type ConvertibleFrom = gtrsconvert.ConvertibleFrom
 
+// FieldParseError is returned with a field fails to be parsed
 type FieldParseError = gtrsconvert.FieldParseError
+
+// SerializeError is returned with a field fails to be serialized
 type SerializeError = gtrsconvert.SerializeError
 
 func copyMap[K comparable, V any](in map[K]V) map[K]V {
