@@ -8,6 +8,8 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+var _ (Consumer[any]) = (*GroupConsumer[any])(nil)
+
 // ErrAckBadRetVal is caused by XACK not accepting an request by returning 0.
 // This usually indicates that the id is wrong or the stream has no groups.
 var ErrAckBadRetVal = errors.New("XAck made no acknowledgement")
@@ -142,7 +144,7 @@ func (gc *GroupConsumer[T]) AwaitAcks() []Message[T] {
 // Close closes the consumer (if not already closed) and returns
 // a slice of unprocessed ack requests. An ack request in unprocessed if it
 // wasn't sent or its error wasn't consumed.
-func (gc *GroupConsumer[T]) Close() []InnerAck {
+func (gc *GroupConsumer[T]) Close() any {
 	select {
 	case <-gc.ctx.Done():
 	default:
