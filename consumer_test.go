@@ -143,7 +143,7 @@ func TestConsumer_CloseGetSeenIDs(t *testing.T) {
 		<-cs.Chan()
 	}
 
-	seen := cs.Close()
+	seen := cs.Close().(StreamIDs)
 	assert.Equal(t, fmt.Sprintf("0-%v", consumeCount), seen["s1"])
 }
 
@@ -172,7 +172,7 @@ func TestConsumer_CancelContext(t *testing.T) {
 		}
 	}
 
-	seen := cs.Close()
+	seen := cs.Close().(StreamIDs)
 	assert.Equal(t, fmt.Sprintf("0-%v", consumeCount), seen["s1"])
 }
 

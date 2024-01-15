@@ -212,7 +212,7 @@ func TestGroupConsumer_AckErrors(t *testing.T) {
 	}
 
 	lastErrs := cs.AwaitAcks()
-	unseen := cs.Close()
+	unseen := cs.Close().([]InnerAck)
 	assert.NotZero(t, len(lastErrs)+len(unseen))
 	assert.Equal(t, readCount, ackErrors+len(unseen)+len(lastErrs))
 }
@@ -397,5 +397,5 @@ func TestGroupConsumer_ConcurrentRead(t *testing.T) {
 	assert.Greater(t, len(msgError), 1)
 	assert.Greater(t, len(msg), 1)
 	assert.Equal(t, len(msg)+len(msgError), 15)
-	assert.Equal(t, len(cs.Close())+len(msgList)+len(msg)+len(msgError), 101)
+	assert.Equal(t, len(cs.Close().([]InnerAck))+len(msgList)+len(msg)+len(msgError), 101)
 }
