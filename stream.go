@@ -15,8 +15,10 @@ var NoMaxLen = int64(0)
 // now is defined here so it can be overridden in unit tests
 var now = time.Now
 
+var _ Stream[any] = (*RedisStream[any])(nil)
+
 // Stream represents a redis stream with messages of type T.
-type Stream[T any] struct {
+type RedisStream[T any] struct {
 	client redis.Cmdable
 	stream string
 	ttl    time.Duration
@@ -38,7 +40,7 @@ type Options struct {
 
 // NewStream create a new stream with messages of type T.
 // Options are optional (the parameter can be nil to use defaults).
-func NewStream[T any](client redis.Cmdable, stream string, opt *Options) Stream[T] {
+func NewStream[T any](client redis.Cmdable, stream string, opt *Options) RedisStream[T] {
 	var approx bool
 	maxLen := NoMaxLen
 	ttl := NoExpiration
@@ -47,16 +49,16 @@ func NewStream[T any](client redis.Cmdable, stream string, opt *Options) Stream[
 		maxLen = opt.MaxLen
 		approx = opt.Approx
 	}
-	return Stream[T]{client: client, stream: stream, ttl: ttl, maxLen: maxLen, approx: approx}
+	return RedisStream[T]{client: client, stream: stream, ttl: ttl, maxLen: maxLen, approx: approx}
 }
 
 // Key returns the redis stream key.
-func (s Stream[T]) Key() string {
+func (s RedisStream[T]) Key() string {
 	return s.stream
 }
 
 // Add a message to the stream. Calls XADD.
-func (s Stream[T]) Add(ctx context.Context, v T, idarg ...string) (string, error) {
+func (s RedisStream[T]) Add(ctx context.Context, v T, idarg ...string) (string, error) {
 	id := ""
 	if len(idarg) > 0 {
 		id = idarg[0]
@@ -92,7 +94,7 @@ func (s Stream[T]) Add(ctx context.Context, v T, idarg ...string) (string, error
 }
 
 // Range returns a portion of the stream. Calls XRANGE.
-func (s Stream[T]) Range(ctx context.Context, from, to string, count ...int64) ([]Message[T], error) {
+func (s RedisStream[T]) Range(ctx context.Context, from, to string, count ...int64) ([]Message[T], error) {
 	var redisSlice []redis.XMessage
 	var err error
 	if len(count) == 0 {
@@ -113,7 +115,7 @@ func (s Stream[T]) Range(ctx context.Context, from, to string, count ...int64) (
 }
 
 // RevRange returns a portion of the stream in reverse order compared to Range. Calls XREVRANGE.
-func (s Stream[T]) RevRange(ctx context.Context, from, to string, count ...int64) ([]Message[T], error) {
+func (s RedisStream[T]) RevRange(ctx context.Context, from, to string, count ...int64) ([]Message[T], error) {
 	var redisSlice []redis.XMessage
 	var err error
 	if len(count) == 0 {
@@ -134,7 +136,7 @@ func (s Stream[T]) RevRange(ctx context.Context, from, to string, count ...int64
 }
 
 // Len returns the current stream length. Calls XLEN.
-func (s Stream[T]) Len(ctx context.Context) (int64, error) {
+func (s RedisStream[T]) Len(ctx context.Context) (int64, error) {
 	len, err := s.client.XLen(ctx, s.stream).Result()
 	if err != nil {
 		err = ReadError{Err: err}
