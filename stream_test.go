@@ -11,7 +11,7 @@ import (
 )
 
 // startMiniredis starts a new miniredis instance and returns it with a fresh client.
-func startMiniredis(t *testing.T) (*miniredis.Miniredis, redis.Cmdable) {
+func startMiniredis(t testing.TB) (*miniredis.Miniredis, redis.Cmdable) {
 	var s *miniredis.Miniredis
 	if t != nil {
 		s = miniredis.RunT(t)
