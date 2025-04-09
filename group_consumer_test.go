@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Consumer groups are not supported in miniredis yet, we'll have to mock clients
@@ -23,46 +23,32 @@ func (gcm groupCreateMock) XGroupCreateMkStream(ctx context.Context, stream, gro
 }
 
 // TestGroupConsumer_SimpleSync
-
-type simpleSyncMock struct {
-	*redis.Client
-	groupCreateMock
-	acks int64
-}
-
-func (sc *simpleSyncMock) XReadGroup(ctx context.Context, a *redis.XReadGroupArgs) *redis.XStreamSliceCmd {
-	return redis.NewXStreamSliceCmdResult([]redis.XStream{{
-		Stream: "s1",
-		Messages: []redis.XMessage{
-			{ID: "0-1", Values: map[string]interface{}{"name": "TestTown"}},
-		},
-	}}, nil)
-}
-
-func (sc *simpleSyncMock) XAck(ctx context.Context, stream, group string, ids ...string) *redis.IntCmd {
-	atomic.AddInt64(&sc.acks, 1)
-	return redis.NewIntResult(1, nil)
-}
-
 func TestGroupConsumer_SimpleSync(t *testing.T) {
-	rdb := simpleSyncMock{}
-	cs := NewGroupMultiStreamConsumer[city](context.TODO(), &rdb, "g1", "c1", map[string]string{"s1": ">"})
+	mb, rdb := startMiniredis(t)
+	defer mb.Close()
+	ctx := context.TODO()
+	s := NewStream[city](rdb, "s1", nil)
+	cs := NewGroupMultiStreamConsumer[city](context.TODO(), rdb, "g1", "c1", map[string]string{"s1": ">"})
 
-	var i int64 = 0
-	var readCount int64 = 100
+	readCount := 100
+	for i := 0; i < readCount; i++ {
+		_, err := s.Add(ctx, city{Name: "TestTown"})
+		require.NoError(t, err)
+	}
+
+	idx := 0
 	for msg := range cs.Chan() {
 		assert.Nil(t, msg.Err)
 
 		cs.Ack(msg)
 		cs.AwaitAcks()
-		assert.Equal(t, i+1, rdb.acks)
+		idx += 1
 
-		if i += 1; i >= readCount {
+		if idx >= readCount {
 			break
 		}
 	}
-
-	assert.Equal(t, readCount, rdb.acks)
+	require.Equal(t, readCount, idx)
 }
 
 // TestGroupConsumer_SwitchToNew
