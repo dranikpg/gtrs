@@ -23,6 +23,6 @@ jobs:
           go test -v ./... -covermode=count -coverprofile=coverage.out
           go tool cover -func=coverage.out -o=coverage.out
     - name: Go Coverage Badge
-      uses: tj-actions/coverage-badge-go@v1
+      uses: tj-actions/coverage-badge-go@v2
       with:
           filename: coverage.out
