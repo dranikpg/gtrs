@@ -166,7 +166,7 @@ func (gc *GroupConsumer[T]) Stats() (int, int, int) {
 }
 
 // consumeLoop fills the consumeChan with new messages from all sources.
-// It is the last goroutine to exit and does remaing ack message recovery.
+// It is the last goroutine to exit and does remaining ack message recovery.
 func (gc *GroupConsumer[T]) consumeLoop() {
 	defer close(gc.consumeChan)
 	defer gc.recoverRemainingAcks()
