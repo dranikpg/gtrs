@@ -7,11 +7,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// Consumer is a generic consumer interface
-type Consumer[T any] interface {
-	Chan() <-chan Message[T]
-	Close()
-}
+var _ Consumer[any] = (*StreamConsumer[any])(nil)
 
 type StreamIDs = map[string]string
 
@@ -85,7 +81,7 @@ func (sc *StreamConsumer[T]) Chan() <-chan Message[T] {
 //
 // The StreamIds can be used to construct a new StreamConsumer that will
 // pick up where this left off.
-func (sc *StreamConsumer[T]) Close() StreamIDs {
+func (sc *StreamConsumer[T]) Close() any {
 	select {
 	case <-sc.ctx.Done():
 	default:
